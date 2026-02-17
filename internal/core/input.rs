@@ -378,7 +378,7 @@ pub(crate) mod ffi {
         shortcut: &KeyboardShortcut,
         out: &mut SharedString,
     ) {
-        *out = shortcut.to_platform_string()
+        *out = shortcut.to_platform_string();
     }
 
     #[unsafe(no_mangle)]
