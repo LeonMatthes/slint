@@ -111,45 +111,30 @@ for (shortcut, expected) in shortcuts.iter().zip(expected) {
     assert_eq!(shortcut.to_string(), expected);
 }
 
-// Test platform string conversion from the properties
+// Test platform string conversion - explicit comparison with expected values
 let shortcut_string = instance.get_shortcut_as_string();
 let shortcut_a_string = instance.get_shortcut_a_as_string();
 let shortcut_plus_string = instance.get_shortcut_plus_as_string();
 
-// Platform strings should not contain quotes or escaped unicode
-assert!(!shortcut_string.contains("\""), "Platform string should not contain quotes: {}", shortcut_string);
-assert!(!shortcut_string.contains("\\u{"), "Platform string should not contain escaped unicode: {}", shortcut_string);
-assert!(!shortcut_a_string.contains("\""), "Platform string should not contain quotes: {}", shortcut_a_string);
-
-// Platform strings should not contain "IgnoreShift" text (it's implicit)
-assert!(!shortcut_plus_string.contains("IgnoreShift"), "Platform string should not contain IgnoreShift: {}", shortcut_plus_string);
-
-// Check that they contain platform-appropriate content
 #[cfg(target_os = "macos")]
 {
-    // macOS should use symbols
-    assert!(shortcut_string.contains("⌃") || shortcut_string.contains("⇧"), 
-        "macOS platform string should use symbols: {}", shortcut_string);
-    assert!(shortcut_string.contains("Escape"), 
-        "Should contain readable key name: {}", shortcut_string);
+    assert_eq!(shortcut_string.as_str(), "⌃⇧Escape");
+    assert_eq!(shortcut_a_string.as_str(), "⌃⇧A");
+    assert_eq!(shortcut_plus_string.as_str(), "⌃+");
 }
 
 #[cfg(target_os = "windows")]
 {
-    // Windows should use "Ctrl" not "Control"
-    assert!(shortcut_string.contains("Ctrl"), 
-        "Windows platform string should use 'Ctrl': {}", shortcut_string);
-    assert!(shortcut_string.contains("Escape"), 
-        "Should contain readable key name: {}", shortcut_string);
+    assert_eq!(shortcut_string.as_str(), "Ctrl+Shift+Escape");
+    assert_eq!(shortcut_a_string.as_str(), "Ctrl+Shift+A");
+    assert_eq!(shortcut_plus_string.as_str(), "Ctrl++");
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 {
-    // Linux should use full names
-    assert!(shortcut_string.contains("Control"), 
-        "Linux platform string should use 'Control': {}", shortcut_string);
-    assert!(shortcut_string.contains("Escape"), 
-        "Should contain readable key name: {}", shortcut_string);
+    assert_eq!(shortcut_string.as_str(), "Control+Shift+Escape");
+    assert_eq!(shortcut_a_string.as_str(), "Control+Shift+A");
+    assert_eq!(shortcut_plus_string.as_str(), "Control++");
 }
 
 use slint::private_unstable_api::re_exports::Key;

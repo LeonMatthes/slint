@@ -439,107 +439,73 @@ impl KeyboardShortcut {
         }
 
         #[cfg(target_os = "macos")]
-        {
-            // macOS uses symbols and no separators
-            // Order: Control, Option, Shift, Command, Key
-            let mut result = alloc::string::String::new();
-            
-            if self.modifiers.control {
-                result.push('⌃');
-            }
-            if !self.ignore_alt && self.modifiers.alt {
-                result.push('⌥');
-            }
-            if !self.ignore_shift && self.modifiers.shift {
-                result.push('⇧');
-            }
-            if self.modifiers.meta {
-                result.push('⌘');
-            }
-            
-            // Add the key - capitalize single chars or special keys
-            let key_display = self.format_key_for_display();
-            result.push_str(&key_display);
-            
-            result.into()
-        }
-
+        let (ctrl_str, alt_str, shift_str, meta_str, separator) = 
+            ("⌃", "⌥", "⇧", "⌘", "");
+        
         #[cfg(target_os = "windows")]
-        {
-            // Windows uses abbreviated names with + separators
-            // Order: Ctrl, Alt, Shift, Win, Key
-            let mut parts = alloc::vec![];
-            
-            if self.modifiers.control {
-                parts.push("Ctrl");
-            }
-            if !self.ignore_alt && self.modifiers.alt {
-                parts.push("Alt");
-            }
-            if !self.ignore_shift && self.modifiers.shift {
-                parts.push("Shift");
-            }
-            if self.modifiers.meta {
-                parts.push("Win");
-            }
-            
-            // Add the key
-            let key_display = self.format_key_for_display();
-            parts.push(&key_display);
-            
-            parts.join("+").into()
-        }
-
+        let (ctrl_str, alt_str, shift_str, meta_str, separator) = 
+            ("Ctrl", "Alt", "Shift", "Win", "+");
+        
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            // Linux and other platforms use full names with + separators
-            // Order: Control, Alt, Shift, Super, Key
-            let mut parts = alloc::vec![];
-            
-            if self.modifiers.control {
-                parts.push("Control");
-            }
-            if !self.ignore_alt && self.modifiers.alt {
-                parts.push("Alt");
-            }
-            if !self.ignore_shift && self.modifiers.shift {
-                parts.push("Shift");
-            }
-            if self.modifiers.meta {
-                parts.push("Super");
-            }
-            
-            // Add the key
-            let key_display = self.format_key_for_display();
-            parts.push(&key_display);
-            
-            parts.join("+").into()
+        let (ctrl_str, alt_str, shift_str, meta_str, separator) = 
+            ("Control", "Alt", "Shift", "Super", "+");
+
+        let mut parts = alloc::vec![];
+        
+        if self.modifiers.control {
+            parts.push(ctrl_str);
         }
+        if !self.ignore_alt && self.modifiers.alt {
+            parts.push(alt_str);
+        }
+        if !self.ignore_shift && self.modifiers.shift {
+            parts.push(shift_str);
+        }
+        if self.modifiers.meta {
+            parts.push(meta_str);
+        }
+        
+        let key_display = self.format_key_for_display();
+        parts.push(&key_display);
+        
+        parts.join(separator).into()
     }
 
     /// Helper function to format the key for display
     fn format_key_for_display(&self) -> alloc::string::String {
-        // Handle special keys with proper capitalization
-        let key_lower = self.key.as_str();
+        // Match against the actual key codes from key_codes.rs
+        let key_str = self.key.as_str();
         
-        // Map of special keys to their display names
-        let special_key = match key_lower {
-            "\u{1b}" | "escape" => Some("Escape"),
-            "\r" | "\n" | "return" | "enter" => Some("Enter"),
-            "\t" | "tab" => Some("Tab"),
-            " " | "space" => Some("Space"),
-            "\u{8}" | "backspace" => Some("Backspace"),
-            "delete" => Some("Delete"),
-            "home" => Some("Home"),
-            "end" => Some("End"),
-            "pageup" => Some("PageUp"),
-            "pagedown" => Some("PageDown"),
-            "left" | "arrowleft" => Some("Left"),
-            "right" | "arrowright" => Some("Right"),
-            "up" | "arrowup" => Some("Up"),
-            "down" | "arrowdown" => Some("Down"),
-            "+" => Some("+"),
-            "-" => Some("-"),
+        // Map special key codes to their display names
+        let key_char = key_str.chars().next();
+        let special_key = match key_char {
+            // Use the actual unicode values from key_codes.rs
+            Some('\u{0008}') => Some("Backspace"),
+            Some('\u{0009}') => Some("Tab"),
+            Some('\u{000a}') => Some("Return"),
+            Some('\u{001b}') => Some("Escape"),
+            Some('\u{007f}') => Some("Delete"),
+            Some('\u{0020}') => Some("Space"),
+            Some('\u{F700}') => Some("UpArrow"),
+            Some('\u{F701}') => Some("DownArrow"),
+            Some('\u{F702}') => Some("LeftArrow"),
+            Some('\u{F703}') => Some("RightArrow"),
+            Some('\u{F704}') => Some("F1"),
+            Some('\u{F705}') => Some("F2"),
+            Some('\u{F706}') => Some("F3"),
+            Some('\u{F707}') => Some("F4"),
+            Some('\u{F708}') => Some("F5"),
+            Some('\u{F709}') => Some("F6"),
+            Some('\u{F70A}') => Some("F7"),
+            Some('\u{F70B}') => Some("F8"),
+            Some('\u{F70C}') => Some("F9"),
+            Some('\u{F70D}') => Some("F10"),
+            Some('\u{F70E}') => Some("F11"),
+            Some('\u{F70F}') => Some("F12"),
+            Some('\u{F729}') => Some("Home"),
+            Some('\u{F72B}') => Some("End"),
+            Some('\u{F72C}') => Some("PageUp"),
+            Some('\u{F72D}') => Some("PageDown"),
             _ => None,
         };
         
@@ -547,13 +513,13 @@ impl KeyboardShortcut {
             return name.into();
         }
         
-        // For single character keys, uppercase them
-        if self.key.chars().count() == 1 {
-            return self.key.to_uppercase().into();
+        // For single character keys, uppercase them for display
+        if key_str.chars().count() == 1 {
+            return key_str.to_uppercase();
         }
         
         // For other keys, return as-is
-        self.key.as_str().into()
+        key_str.into()
     }
 }
 
@@ -1372,9 +1338,9 @@ mod tests {
 
     #[test]
     fn test_to_platform_string_escape_key() {
-        // Test with Escape key
+        // Test with Escape key - use correct unicode value from key_codes.rs
         let shortcut = make_keyboard_shortcut(
-            "\u{1b}".into(),
+            "\u{001b}".into(),
             KeyboardModifiers { alt: false, control: true, shift: true, meta: false },
             false,
             false,
@@ -1437,13 +1403,13 @@ mod tests {
 
     #[test]
     fn test_to_platform_string_special_keys() {
-        // Test various special keys
+        // Test various special keys using correct unicode values from key_codes.rs
         let test_keys: alloc::vec::Vec<(&str, &str)> = alloc::vec![
-            ("\u{1b}", "Escape"),
-            ("\r", "Enter"),
-            ("\t", "Tab"),
-            (" ", "Space"),
-            ("\u{8}", "Backspace"),
+            ("\u{001b}", "Escape"),   // Escape
+            ("\u{000a}", "Return"),   // Return/Enter
+            ("\u{0009}", "Tab"),      // Tab
+            ("\u{0020}", "Space"),    // Space
+            ("\u{0008}", "Backspace"), // Backspace
         ];
         
         for (key_code, expected_name) in test_keys {
