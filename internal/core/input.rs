@@ -555,6 +555,11 @@ impl StandardShortcut {
     }
 }
 
+/// Free function version of to_platform_string for use in generated code
+pub fn standard_shortcut_to_platform_string(shortcut: StandardShortcut) -> SharedString {
+    shortcut.to_platform_string()
+}
+
 /// Shortcuts that are used when editing text
 pub enum TextShortcut {
     /// Move the cursor

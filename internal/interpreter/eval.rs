@@ -1547,6 +1547,33 @@ fn call_builtin_function(
                 panic!("internal error: argument to RestartTimer must be an element")
             }
         }
+        BuiltinFunction::StandardShortcutToPlatformString => {
+            let value = eval_expression(&arguments[0], local_context);
+            // Extract the enum value from the Value::EnumerationValue
+            let shortcut = if let Value::EnumerationValue(enum_name, enum_value) = value {
+                if enum_name == "StandardShortcut" {
+                    // Convert the string enum value to the StandardShortcut enum
+                    match enum_value.as_str() {
+                        "copy" => corelib::input::StandardShortcut::Copy,
+                        "cut" => corelib::input::StandardShortcut::Cut,
+                        "paste" => corelib::input::StandardShortcut::Paste,
+                        "select-all" => corelib::input::StandardShortcut::SelectAll,
+                        "find" => corelib::input::StandardShortcut::Find,
+                        "save" => corelib::input::StandardShortcut::Save,
+                        "print" => corelib::input::StandardShortcut::Print,
+                        "undo" => corelib::input::StandardShortcut::Undo,
+                        "redo" => corelib::input::StandardShortcut::Redo,
+                        "refresh" => corelib::input::StandardShortcut::Refresh,
+                        _ => panic!("Invalid StandardShortcut enum value: {}", enum_value),
+                    }
+                } else {
+                    panic!("Expected StandardShortcut enum, got: {}", enum_name);
+                }
+            } else {
+                panic!("Expected EnumerationValue, got: {:?}", value);
+            };
+            Value::String(shortcut.to_platform_string())
+        }
         BuiltinFunction::EscapeMarkdown => {
             let text: SharedString =
                 eval_expression(&arguments[0], local_context).try_into().unwrap();
