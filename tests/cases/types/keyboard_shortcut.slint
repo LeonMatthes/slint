@@ -112,15 +112,16 @@ for (shortcut, expected) in shortcuts.iter().zip(expected) {
 }
 
 // Test platform string conversion - explicit comparison with expected values
+// Note: On macOS, Slint remaps control → Command (⌘), meta → Control (⌃)
 let shortcut_string = instance.get_shortcut_as_string();
 let shortcut_a_string = instance.get_shortcut_a_as_string();
 let shortcut_plus_string = instance.get_shortcut_plus_as_string();
 
 #[cfg(target_os = "macos")]
 {
-    assert_eq!(shortcut_string.as_str(), "⌃⇧Escape");
-    assert_eq!(shortcut_a_string.as_str(), "⌃⇧A");
-    assert_eq!(shortcut_plus_string.as_str(), "⌃+");
+    assert_eq!(shortcut_string.as_str(), "⇧⌘Escape");  // Control+Shift → Shift+Command
+    assert_eq!(shortcut_a_string.as_str(), "⇧⌘A");      // Control+Shift → Shift+Command
+    assert_eq!(shortcut_plus_string.as_str(), "⌘+");    // Control → Command
 }
 
 #[cfg(target_os = "windows")]

@@ -420,7 +420,8 @@ impl KeyboardShortcut {
     ///
     /// This function returns a string that looks native for the current platform:
     /// - **macOS**: Uses symbols like ⌘ (Command), ⌥ (Option), ⇧ (Shift), ⌃ (Control)
-    ///   - Example: `⌃⌥⇧⌘A` for Control+Option+Shift+Command+A
+    ///   - Note: Slint remaps modifiers on macOS - `control` becomes Command (⌘), `meta` becomes Control (⌃)
+    ///   - Example: `⌃⌥⇧⌘A` for Meta+Option+Shift+Control+A (displayed as Control+Option+Shift+Command+A)
     ///   - Ref: <https://developer.apple.com/design/human-interface-guidelines/keyboards>
     /// - **Windows**: Uses abbreviated names like Ctrl, Alt, Shift, Win
     ///   - Example: `Ctrl+Alt+Shift+Win+A`
@@ -438,37 +439,60 @@ impl KeyboardShortcut {
             return SharedString::default();
         }
 
-        #[cfg(target_os = "macos")]
-        let (ctrl_str, alt_str, shift_str, meta_str, separator) = 
-            ("⌃", "⌥", "⇧", "⌘", "");
-        
-        #[cfg(target_os = "windows")]
-        let (ctrl_str, alt_str, shift_str, meta_str, separator) = 
-            ("Ctrl", "Alt", "Shift", "Win", "+");
-        
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        let (ctrl_str, alt_str, shift_str, meta_str, separator) = 
-            ("Control", "Alt", "Shift", "Super", "+");
-
         let mut parts = alloc::vec![];
         
-        if self.modifiers.control {
-            parts.push(ctrl_str);
-        }
-        if !self.ignore_alt && self.modifiers.alt {
-            parts.push(alt_str);
-        }
-        if !self.ignore_shift && self.modifiers.shift {
-            parts.push(shift_str);
-        }
-        if self.modifiers.meta {
-            parts.push(meta_str);
+        #[cfg(target_os = "macos")]
+        {
+            // On macOS, Slint remaps: control → Command, meta → Control
+            // Display order: Control, Option, Shift, Command
+            if self.modifiers.meta {
+                parts.push("⌃");  // Control symbol (from meta modifier)
+            }
+            if !self.ignore_alt && self.modifiers.alt {
+                parts.push("⌥");  // Option symbol
+            }
+            if !self.ignore_shift && self.modifiers.shift {
+                parts.push("⇧");  // Shift symbol
+            }
+            if self.modifiers.control {
+                parts.push("⌘");  // Command symbol (from control modifier)
+            }
+            
+            let key_display = self.format_key_for_display();
+            parts.push(&key_display);
+            
+            parts.join("").into()
         }
         
-        let key_display = self.format_key_for_display();
-        parts.push(&key_display);
-        
-        parts.join(separator).into()
+        #[cfg(not(target_os = "macos"))]
+        {
+            // Windows and Linux use the same order: Control, Alt, Shift, Meta
+            #[cfg(target_os = "windows")]
+            let (ctrl_str, alt_str, shift_str, meta_str, separator) = 
+                ("Ctrl", "Alt", "Shift", "Win", "+");
+            
+            #[cfg(not(target_os = "windows"))]
+            let (ctrl_str, alt_str, shift_str, meta_str, separator) = 
+                ("Control", "Alt", "Shift", "Super", "+");
+            
+            if self.modifiers.control {
+                parts.push(ctrl_str);
+            }
+            if !self.ignore_alt && self.modifiers.alt {
+                parts.push(alt_str);
+            }
+            if !self.ignore_shift && self.modifiers.shift {
+                parts.push(shift_str);
+            }
+            if self.modifiers.meta {
+                parts.push(meta_str);
+            }
+            
+            let key_display = self.format_key_for_display();
+            parts.push(&key_display);
+            
+            parts.join(separator).into()
+        }
     }
 
     /// Helper function to format the key for display
@@ -1297,32 +1321,33 @@ mod tests {
     #[test]
     fn test_to_platform_string() {
         // Test cases: (key, modifiers, ignore_shift, ignore_alt, expected_macos, expected_windows, expected_linux)
+        // Note: On macOS, Slint remaps control → Command (⌘), meta → Control (⌃)
         let test_cases = [
-            // Basic key with control
+            // Basic key with control (displays as Command on macOS)
             ("a", KeyboardModifiers { alt: false, control: true, shift: false, meta: false }, false, false,
-             "⌃A", "Ctrl+A", "Control+A"),
+             "⌘A", "Ctrl+A", "Control+A"),
             
-            // All modifiers
+            // All modifiers (macOS order: Control, Option, Shift, Command)
             ("a", KeyboardModifiers { alt: true, control: true, shift: true, meta: true }, false, false,
              "⌃⌥⇧⌘A", "Ctrl+Alt+Shift+Win+A", "Control+Alt+Shift+Super+A"),
             
-            // Escape key with control and shift
+            // Escape key with control and shift (control → Command on macOS)
             ("\u{001b}", KeyboardModifiers { alt: false, control: true, shift: true, meta: false }, false, false,
-             "⌃⇧Escape", "Ctrl+Shift+Escape", "Control+Shift+Escape"),
+             "⇧⌘Escape", "Ctrl+Shift+Escape", "Control+Shift+Escape"),
             
-            // Plus key with ignore_shift
+            // Plus key with ignore_shift (control → Command on macOS)
             ("+", KeyboardModifiers { alt: false, control: true, shift: false, meta: false }, true, false,
-             "⌃+", "Ctrl++", "Control++"),
+             "⌘+", "Ctrl++", "Control++"),
             
-            // Key with ignore_alt
+            // Key with ignore_alt (control → Command on macOS)
             ("a", KeyboardModifiers { alt: true, control: true, shift: false, meta: false }, false, true,
-             "⌃A", "Ctrl+A", "Control+A"),
+             "⌘A", "Ctrl+A", "Control+A"),
             
             // Empty key
             ("", KeyboardModifiers { alt: false, control: true, shift: false, meta: false }, false, false,
              "", "", ""),
             
-            // Special keys
+            // Special keys (no modifiers)
             ("\u{000a}", KeyboardModifiers { alt: false, control: false, shift: false, meta: false }, false, false,
              "Return", "Return", "Return"),
             ("\u{0009}", KeyboardModifiers { alt: false, control: false, shift: false, meta: false }, false, false,
