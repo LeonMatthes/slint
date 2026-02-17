@@ -3549,6 +3549,11 @@ fn compile_expression(expr: &llr::Expression, ctx: &EvaluationContext) -> String
                         cases.join(" ")
                     )
                 }
+                (Type::KeyboardShortcutType, Type::String) => {
+                    // TODO: Implement keyboard shortcut to string conversion for C++
+                    // For now, use the default Display implementation
+                    format!("[&](){{ slint::SharedString s; slint::cbindgen_private::slint_keyboard_shortcut_to_platform_string(&({f}), &s); return s; }}()")
+                }
                 _ => f,
             }
         }
