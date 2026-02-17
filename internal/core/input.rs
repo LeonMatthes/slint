@@ -447,6 +447,7 @@ impl KeyEvent {
 }
 
 /// Represents a non context specific shortcut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StandardShortcut {
     /// Copy Something
     Copy,
@@ -468,6 +469,90 @@ pub enum StandardShortcut {
     Redo,
     /// Refresh
     Refresh,
+}
+
+impl StandardShortcut {
+    /// Returns a platform-specific string representation of the keyboard shortcut.
+    /// 
+    /// On macOS, this uses Unicode symbols (⌘, ⌥, ⇧, ⌃) as per Apple's Human Interface Guidelines.
+    /// On Windows and Linux, this uses text representations (Ctrl, Alt, Shift).
+    /// 
+    /// # Platform-specific formats
+    /// 
+    /// - macOS: Uses Command (⌘) as the primary modifier
+    ///   - References:
+    ///     - Apple HIG: https://developer.apple.com/design/human-interface-guidelines/keyboards
+    ///     - Unicode symbols: U+2318 (⌘), U+2325 (⌥), U+21E7 (⇧), U+2303 (⌃)
+    /// 
+    /// - Windows: Uses Ctrl as the primary modifier
+    ///   - References:
+    ///     - Microsoft Design Guidelines: https://learn.microsoft.com/en-us/windows/apps/design/input/keyboard-accelerators
+    /// 
+    /// - Linux: Uses Ctrl as the primary modifier (follows common conventions)
+    ///   - References:
+    ///     - GNOME HIG: https://developer.gnome.org/hig/patterns/controls/menus.html
+    ///     - KDE HIG: https://develop.kde.org/hig/
+    /// 
+    /// # Examples
+    /// 
+    /// ```
+    /// # use i_slint_core::input::StandardShortcut;
+    /// let copy_shortcut = StandardShortcut::Copy;
+    /// let shortcut_str = copy_shortcut.to_platform_string();
+    /// // On macOS: "⌘C"
+    /// // On Windows/Linux: "Ctrl+C"
+    /// ```
+    pub fn to_platform_string(&self) -> SharedString {
+        #[cfg(target_os = "macos")]
+        {
+            match self {
+                StandardShortcut::Copy => "⌘C",
+                StandardShortcut::Cut => "⌘X",
+                StandardShortcut::Paste => "⌘V",
+                StandardShortcut::SelectAll => "⌘A",
+                StandardShortcut::Find => "⌘F",
+                StandardShortcut::Save => "⌘S",
+                StandardShortcut::Print => "⌘P",
+                StandardShortcut::Undo => "⌘Z",
+                StandardShortcut::Redo => "⇧⌘Z",
+                StandardShortcut::Refresh => "⌘R",
+            }
+            .into()
+        }
+        #[cfg(target_os = "windows")]
+        {
+            match self {
+                StandardShortcut::Copy => "Ctrl+C",
+                StandardShortcut::Cut => "Ctrl+X",
+                StandardShortcut::Paste => "Ctrl+V",
+                StandardShortcut::SelectAll => "Ctrl+A",
+                StandardShortcut::Find => "Ctrl+F",
+                StandardShortcut::Save => "Ctrl+S",
+                StandardShortcut::Print => "Ctrl+P",
+                StandardShortcut::Undo => "Ctrl+Z",
+                StandardShortcut::Redo => "Ctrl+Y",
+                StandardShortcut::Refresh => "Ctrl+R",
+            }
+            .into()
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            // Linux and other Unix-like systems
+            match self {
+                StandardShortcut::Copy => "Ctrl+C",
+                StandardShortcut::Cut => "Ctrl+X",
+                StandardShortcut::Paste => "Ctrl+V",
+                StandardShortcut::SelectAll => "Ctrl+A",
+                StandardShortcut::Find => "Ctrl+F",
+                StandardShortcut::Save => "Ctrl+S",
+                StandardShortcut::Print => "Ctrl+P",
+                StandardShortcut::Undo => "Ctrl+Z",
+                StandardShortcut::Redo => "Ctrl+Shift+Z",
+                StandardShortcut::Refresh => "Ctrl+R",
+            }
+            .into()
+        }
+    }
 }
 
 /// Shortcuts that are used when editing text
@@ -1015,5 +1100,62 @@ impl TextCursorBlinker {
     /// text editable elements looses the focus or is hidden.
     pub fn stop(&self) {
         self.cursor_blink_timer.stop()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_standard_shortcut_to_platform_string() {
+        // Test that all shortcuts return valid strings
+        let shortcuts = [
+            StandardShortcut::Copy,
+            StandardShortcut::Cut,
+            StandardShortcut::Paste,
+            StandardShortcut::SelectAll,
+            StandardShortcut::Find,
+            StandardShortcut::Save,
+            StandardShortcut::Print,
+            StandardShortcut::Undo,
+            StandardShortcut::Redo,
+            StandardShortcut::Refresh,
+        ];
+
+        for shortcut in shortcuts.iter() {
+            let result = shortcut.to_platform_string();
+            assert!(!result.is_empty(), "Shortcut {:?} should return a non-empty string", shortcut);
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_macos_shortcuts() {
+        assert_eq!(StandardShortcut::Copy.to_platform_string(), "⌘C");
+        assert_eq!(StandardShortcut::Cut.to_platform_string(), "⌘X");
+        assert_eq!(StandardShortcut::Paste.to_platform_string(), "⌘V");
+        assert_eq!(StandardShortcut::SelectAll.to_platform_string(), "⌘A");
+        assert_eq!(StandardShortcut::Redo.to_platform_string(), "⇧⌘Z");
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn test_windows_shortcuts() {
+        assert_eq!(StandardShortcut::Copy.to_platform_string(), "Ctrl+C");
+        assert_eq!(StandardShortcut::Cut.to_platform_string(), "Ctrl+X");
+        assert_eq!(StandardShortcut::Paste.to_platform_string(), "Ctrl+V");
+        assert_eq!(StandardShortcut::SelectAll.to_platform_string(), "Ctrl+A");
+        assert_eq!(StandardShortcut::Redo.to_platform_string(), "Ctrl+Y");
+    }
+
+    #[test]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    fn test_linux_shortcuts() {
+        assert_eq!(StandardShortcut::Copy.to_platform_string(), "Ctrl+C");
+        assert_eq!(StandardShortcut::Cut.to_platform_string(), "Ctrl+X");
+        assert_eq!(StandardShortcut::Paste.to_platform_string(), "Ctrl+V");
+        assert_eq!(StandardShortcut::SelectAll.to_platform_string(), "Ctrl+A");
+        assert_eq!(StandardShortcut::Redo.to_platform_string(), "Ctrl+Shift+Z");
     }
 }
