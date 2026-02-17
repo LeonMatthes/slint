@@ -117,6 +117,9 @@ pub enum BuiltinFunction {
     RestartTimer,
     ParseMarkdown,
     EscapeMarkdown,
+    /// Convert a StandardShortcut enum value to its platform-specific string representation
+    /// Arguments: `(shortcut_enum_value)`
+    StandardShortcutToPlatformString,
 }
 
 #[derive(Debug, Clone)]
@@ -288,6 +291,9 @@ declare_builtin_function_types!(
     StartTimer: (Type::ElementReference) -> Type::Void,
     StopTimer: (Type::ElementReference) -> Type::Void,
     RestartTimer: (Type::ElementReference) -> Type::Void,
+    StandardShortcutToPlatformString: (Type::Enumeration(
+        typeregister::BUILTIN.with(|e| e.enums.StandardShortcut.clone()),
+    )) -> Type::String,
     EscapeMarkdown: (Type::String) -> Type::String,
     ParseMarkdown: (Type::String) -> Type::StyledText
 );
@@ -387,6 +393,7 @@ impl BuiltinFunction {
             BuiltinFunction::StartTimer => false,
             BuiltinFunction::StopTimer => false,
             BuiltinFunction::RestartTimer => false,
+            BuiltinFunction::StandardShortcutToPlatformString => true,
             BuiltinFunction::ParseMarkdown | BuiltinFunction::EscapeMarkdown => false,
         }
     }
@@ -467,6 +474,7 @@ impl BuiltinFunction {
             BuiltinFunction::StartTimer => false,
             BuiltinFunction::StopTimer => false,
             BuiltinFunction::RestartTimer => false,
+            BuiltinFunction::StandardShortcutToPlatformString => true,
             BuiltinFunction::ParseMarkdown | BuiltinFunction::EscapeMarkdown => true,
         }
     }

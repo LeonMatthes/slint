@@ -3540,6 +3540,10 @@ fn compile_builtin_function_call(
             let text = a.next().unwrap();
             quote!(sp::parse_markdown(&#text))
         }
+        BuiltinFunction::StandardShortcutToPlatformString => {
+            let shortcut = a.next().unwrap();
+            quote!(#shortcut.to_platform_string())
+        }
     }
 }
 

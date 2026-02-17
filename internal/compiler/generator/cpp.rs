@@ -4394,6 +4394,10 @@ fn compile_builtin_function_call(
                 panic!("internal error: invalid args to RetartTimer {arguments:?}")
             }
         }
+        BuiltinFunction::StandardShortcutToPlatformString => {
+            // C++ implementation not required per the issue
+            todo!("C++ support for StandardShortcutToPlatformString not implemented")
+        }
         BuiltinFunction::EscapeMarkdown => {
             let text = a.next().unwrap();
             format!("slint::private_api::escape_markdown({})", text)

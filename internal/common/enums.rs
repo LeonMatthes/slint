@@ -532,6 +532,34 @@ macro_rules! for_each_enums {
                 /// This variant is reported when the operating system is none of the above.
                 Other,
             }
+
+            /// This enum represents standard keyboard shortcuts that are common across applications.
+            /// These shortcuts are automatically adjusted to be platform-native (e.g., Cmd on macOS, Ctrl on other platforms).
+            ///
+            /// Use the `to-platform-string` function to get a human-readable, platform-specific representation of the shortcut.
+            #[non_exhaustive]
+            enum StandardShortcut {
+                /// Copy the selected content to the clipboard (Ctrl+C / Cmd+C)
+                Copy,
+                /// Cut the selected content to the clipboard (Ctrl+X / Cmd+X)
+                Cut,
+                /// Paste content from the clipboard (Ctrl+V / Cmd+V)
+                Paste,
+                /// Select all content (Ctrl+A / Cmd+A)
+                SelectAll,
+                /// Find or search (Ctrl+F / Cmd+F)
+                Find,
+                /// Save the current document (Ctrl+S / Cmd+S)
+                Save,
+                /// Print the current document (Ctrl+P / Cmd+P)
+                Print,
+                /// Undo the last action (Ctrl+Z / Cmd+Z)
+                Undo,
+                /// Redo the last undone action (Ctrl+Y / Ctrl+Shift+Z / Cmd+Shift+Z)
+                Redo,
+                /// Refresh the current view (Ctrl+R / Cmd+R)
+                Refresh,
+            }
         ];
     };
 }

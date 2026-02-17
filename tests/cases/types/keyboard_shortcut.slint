@@ -1,0 +1,90 @@
+// Copyright © SixtyFPS GmbH <info@slint.dev>
+// SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0
+
+// Test keyboard shortcut enum and to-platform-string conversion
+
+export component TestKeyboardShortcut {
+    in-out property<bool> test: true;
+    
+    // Test that StandardShortcut enum values exist
+    property<StandardShortcut> copy_shortcut: StandardShortcut.Copy;
+    property<StandardShortcut> paste_shortcut: StandardShortcut.Paste;
+    property<StandardShortcut> undo_shortcut: StandardShortcut.Undo;
+    
+    // Test that to-platform-string conversion works
+    property<string> copy_str: StandardShortcut.Copy.to-platform-string();
+    property<string> cut_str: StandardShortcut.Cut.to-platform-string();
+    property<string> paste_str: StandardShortcut.Paste.to-platform-string();
+    property<string> select_all_str: StandardShortcut.SelectAll.to-platform-string();
+    property<string> find_str: StandardShortcut.Find.to-platform-string();
+    property<string> save_str: StandardShortcut.Save.to-platform-string();
+    property<string> print_str: StandardShortcut.Print.to-platform-string();
+    property<string> undo_str: StandardShortcut.Undo.to-platform-string();
+    property<string> redo_str: StandardShortcut.Redo.to-platform-string();
+    property<string> refresh_str: StandardShortcut.Refresh.to-platform-string();
+    
+    // Verify that the strings are not empty and contain expected patterns
+    // On all platforms, shortcuts should contain letters (C, X, V, etc.)
+    init => {
+        assert(copy_str != "");
+        assert(cut_str != "");
+        assert(paste_str != "");
+        assert(select_all_str != "");
+        assert(find_str != "");
+        assert(save_str != "");
+        assert(print_str != "");
+        assert(undo_str != "");
+        assert(redo_str != "");
+        assert(refresh_str != "");
+    }
+}
+
+/*
+```rust
+// Rust-specific tests for platform-specific formatting
+use slint::StandardShortcut;
+
+let mut instance = TestKeyboardShortcut::new().unwrap();
+
+// Get the shortcut strings
+let copy_str = instance.get_copy_str();
+let undo_str = instance.get_undo_str();
+
+// Verify strings are not empty
+assert!(!copy_str.is_empty(), "Copy shortcut string should not be empty");
+assert!(!undo_str.is_empty(), "Undo shortcut string should not be empty");
+
+// Platform-specific checks
+#[cfg(target_os = "macos")]
+{
+    // On macOS, shortcuts should use the Command symbol (⌘)
+    assert!(copy_str.contains("⌘"), "macOS copy shortcut should contain ⌘: {}", copy_str);
+    assert!(copy_str.contains("C"), "macOS copy shortcut should contain C: {}", copy_str);
+}
+
+#[cfg(target_os = "windows")]
+{
+    // On Windows, shortcuts should use "Ctrl+"
+    assert!(copy_str.contains("Ctrl"), "Windows copy shortcut should contain Ctrl: {}", copy_str);
+    assert!(copy_str.contains("C"), "Windows copy shortcut should contain C: {}", copy_str);
+    
+    // Windows uses Ctrl+Y for Redo
+    let redo_str = instance.get_redo_str();
+    assert!(redo_str.contains("Ctrl"), "Windows redo shortcut should contain Ctrl: {}", redo_str);
+    assert!(redo_str.contains("Y"), "Windows redo shortcut should contain Y: {}", redo_str);
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+{
+    // On Linux and other platforms, shortcuts should use "Ctrl+"
+    assert!(copy_str.contains("Ctrl"), "Linux copy shortcut should contain Ctrl: {}", copy_str);
+    assert!(copy_str.contains("C"), "Linux copy shortcut should contain C: {}", copy_str);
+    
+    // Linux uses Ctrl+Shift+Z for Redo
+    let redo_str = instance.get_redo_str();
+    assert!(redo_str.contains("Ctrl"), "Linux redo shortcut should contain Ctrl: {}", redo_str);
+    assert!(redo_str.contains("Shift"), "Linux redo shortcut should contain Shift: {}", redo_str);
+    assert!(redo_str.contains("Z"), "Linux redo shortcut should contain Z: {}", redo_str);
+}
+```
+*/

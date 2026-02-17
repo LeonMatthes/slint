@@ -933,6 +933,7 @@ impl LookupObject for Expression {
                 ty if ty.as_unit_product().is_some() => {
                     NumberWithUnitExpression(self).for_each_entry(ctx, f)
                 }
+                Type::Enumeration(_) => EnumerationExpression(self).for_each_entry(ctx, f),
                 _ => None,
             },
         }
@@ -958,6 +959,7 @@ impl LookupObject for Expression {
                 ty if ty.as_unit_product().is_some() => {
                     NumberWithUnitExpression(self).lookup(ctx, name)
                 }
+                Type::Enumeration(_) => EnumerationExpression(self).lookup(ctx, name),
                 _ => None,
             },
         }
@@ -1165,5 +1167,34 @@ impl LookupObject for NumberWithUnitExpression<'_> {
                     .or_else(|| f("cos", member_function(BuiltinFunction::Cos)))
                     .or_else(|| f("tan", member_function(BuiltinFunction::Tan)))
             })
+    }
+}
+
+/// An expression of an enumeration value
+struct EnumerationExpression<'a>(&'a Expression);
+impl LookupObject for EnumerationExpression<'_> {
+    fn for_each_entry<R>(
+        &self,
+        ctx: &LookupCtx,
+        f: &mut impl FnMut(&SmolStr, LookupResult) -> Option<R>,
+    ) -> Option<R> {
+        // Check if this is a StandardShortcut enumeration
+        if let Type::Enumeration(enum_type) = self.0.ty() {
+            if enum_type.name == "StandardShortcut" {
+                let member_function = |func: BuiltinFunction| {
+                    LookupResult::Callable(LookupResultCallable::MemberFunction {
+                        base: self.0.clone(),
+                        base_node: ctx.current_token.clone(),
+                        member: Box::new(LookupResultCallable::Callable(Callable::Builtin(func))),
+                    })
+                };
+                
+                let mut f = |s, res| f(&SmolStr::new_static(s), res);
+                return None.or_else(|| {
+                    f("to-platform-string", member_function(BuiltinFunction::StandardShortcutToPlatformString))
+                });
+            }
+        }
+        None
     }
 }
