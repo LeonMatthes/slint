@@ -1564,7 +1564,7 @@ fn call_builtin_function(
                         "undo" => corelib::input::StandardShortcut::Undo,
                         "redo" => corelib::input::StandardShortcut::Redo,
                         "refresh" => corelib::input::StandardShortcut::Refresh,
-                        _ => panic!("Invalid StandardShortcut enum value: {}", enum_value),
+                        _ => panic!("Invalid StandardShortcut enum value: '{}'. Valid values are: copy, cut, paste, select-all, find, save, print, undo, redo, refresh", enum_value),
                     }
                 } else {
                     panic!("Expected StandardShortcut enum, got: {}", enum_name);

@@ -3542,7 +3542,7 @@ fn compile_builtin_function_call(
         }
         BuiltinFunction::StandardShortcutToPlatformString => {
             let shortcut = a.next().unwrap();
-            quote!(sp::input::standard_shortcut_to_platform_string(#shortcut))
+            quote!(sp::standard_shortcut_to_platform_string(#shortcut as i32))
         }
     }
 }

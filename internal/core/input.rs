@@ -556,8 +556,26 @@ impl StandardShortcut {
 }
 
 /// Free function version of to_platform_string for use in generated code
-pub fn standard_shortcut_to_platform_string(shortcut: StandardShortcut) -> SharedString {
-    shortcut.to_platform_string()
+/// Takes the enum as an integer to work with generated enum types
+pub fn standard_shortcut_to_platform_string(shortcut: i32) -> SharedString {
+    match shortcut {
+        0 => StandardShortcut::Copy,
+        1 => StandardShortcut::Cut,
+        2 => StandardShortcut::Paste,
+        3 => StandardShortcut::SelectAll,
+        4 => StandardShortcut::Find,
+        5 => StandardShortcut::Save,
+        6 => StandardShortcut::Print,
+        7 => StandardShortcut::Undo,
+        8 => StandardShortcut::Redo,
+        9 => StandardShortcut::Refresh,
+        _ => {
+            #[cfg(debug_assertions)]
+            eprintln!("Warning: Invalid StandardShortcut enum value: {}", shortcut);
+            return SharedString::default()
+        }
+    }
+    .to_platform_string()
 }
 
 /// Shortcuts that are used when editing text
