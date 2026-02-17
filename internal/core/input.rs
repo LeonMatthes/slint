@@ -374,6 +374,14 @@ pub(crate) mod ffi {
     }
 
     #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn slint_keyboard_shortcut_to_platform_string(
+        shortcut: &KeyboardShortcut,
+        out: &mut SharedString,
+    ) {
+        *out = shortcut.to_platform_string()
+    }
+
+    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn slint_keyboard_shortcut_matches(
         shortcut: &KeyboardShortcut,
         key_event: &KeyEvent,
@@ -406,6 +414,146 @@ impl KeyboardShortcut {
         let event_text = key_event.text.chars().flat_map(|character| character.to_lowercase());
 
         event_text.eq(self.key.chars()) && key_event.modifiers == expected_modifiers
+    }
+
+    /// Convert the keyboard shortcut to a platform-native string representation.
+    ///
+    /// This function returns a string that looks native for the current platform:
+    /// - **macOS**: Uses symbols like ⌘ (Command), ⌥ (Option), ⇧ (Shift), ⌃ (Control)
+    ///   - Example: `⌃⌥⇧⌘A` for Control+Option+Shift+Command+A
+    ///   - Ref: <https://developer.apple.com/design/human-interface-guidelines/keyboards>
+    /// - **Windows**: Uses abbreviated names like Ctrl, Alt, Shift, Win
+    ///   - Example: `Ctrl+Alt+Shift+Win+A`
+    ///   - Ref: <https://learn.microsoft.com/en-us/windows/apps/design/input/keyboard-accelerators>
+    /// - **Linux/Other**: Uses full names like Control, Alt, Shift, Super
+    ///   - Example: `Control+Alt+Shift+Super+A`
+    ///   - Ref: <https://developer.gnome.org/hig/patterns/controls/shortcuts.html>
+    ///
+    /// # Special handling
+    /// - If `ignore_shift` or `ignore_alt` is true, those modifiers are not included
+    /// - Special keys (like Escape, Enter, etc.) are shown with proper capitalization
+    /// - Single character keys are uppercased for display
+    pub fn to_platform_string(&self) -> SharedString {
+        if self.key.is_empty() {
+            return SharedString::default();
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            // macOS uses symbols and no separators
+            // Order: Control, Option, Shift, Command, Key
+            let mut result = alloc::string::String::new();
+            
+            if self.modifiers.control {
+                result.push('⌃');
+            }
+            if !self.ignore_alt && self.modifiers.alt {
+                result.push('⌥');
+            }
+            if !self.ignore_shift && self.modifiers.shift {
+                result.push('⇧');
+            }
+            if self.modifiers.meta {
+                result.push('⌘');
+            }
+            
+            // Add the key - capitalize single chars or special keys
+            let key_display = self.format_key_for_display();
+            result.push_str(&key_display);
+            
+            result.into()
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            // Windows uses abbreviated names with + separators
+            // Order: Ctrl, Alt, Shift, Win, Key
+            let mut parts = alloc::vec![];
+            
+            if self.modifiers.control {
+                parts.push("Ctrl");
+            }
+            if !self.ignore_alt && self.modifiers.alt {
+                parts.push("Alt");
+            }
+            if !self.ignore_shift && self.modifiers.shift {
+                parts.push("Shift");
+            }
+            if self.modifiers.meta {
+                parts.push("Win");
+            }
+            
+            // Add the key
+            let key_display = self.format_key_for_display();
+            parts.push(&key_display);
+            
+            parts.join("+").into()
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            // Linux and other platforms use full names with + separators
+            // Order: Control, Alt, Shift, Super, Key
+            let mut parts = alloc::vec![];
+            
+            if self.modifiers.control {
+                parts.push("Control");
+            }
+            if !self.ignore_alt && self.modifiers.alt {
+                parts.push("Alt");
+            }
+            if !self.ignore_shift && self.modifiers.shift {
+                parts.push("Shift");
+            }
+            if self.modifiers.meta {
+                parts.push("Super");
+            }
+            
+            // Add the key
+            let key_display = self.format_key_for_display();
+            parts.push(&key_display);
+            
+            parts.join("+").into()
+        }
+    }
+
+    /// Helper function to format the key for display
+    fn format_key_for_display(&self) -> alloc::string::String {
+        // Handle special keys with proper capitalization
+        let key_lower = self.key.as_str();
+        
+        // Map of special keys to their display names
+        let special_key = match key_lower {
+            "\u{1b}" | "escape" => Some("Escape"),
+            "\r" | "\n" | "return" | "enter" => Some("Enter"),
+            "\t" | "tab" => Some("Tab"),
+            " " | "space" => Some("Space"),
+            "\u{8}" | "backspace" => Some("Backspace"),
+            "delete" => Some("Delete"),
+            "home" => Some("Home"),
+            "end" => Some("End"),
+            "pageup" => Some("PageUp"),
+            "pagedown" => Some("PageDown"),
+            "left" | "arrowleft" => Some("Left"),
+            "right" | "arrowright" => Some("Right"),
+            "up" | "arrowup" => Some("Up"),
+            "down" | "arrowdown" => Some("Down"),
+            "+" => Some("+"),
+            "-" => Some("-"),
+            _ => None,
+        };
+        
+        if let Some(name) = special_key {
+            return name.into();
+        }
+        
+        // For single character keys, uppercase them
+        if self.key.chars().count() == 1 {
+            return self.key.to_uppercase().into();
+        }
+        
+        // For other keys, return as-is
+        self.key.as_str().into()
     }
 }
 
@@ -1172,5 +1320,177 @@ impl TextCursorBlinker {
     /// text editable elements looses the focus or is hidden.
     pub fn stop(&self) {
         self.cursor_blink_timer.stop()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    extern crate alloc;
+
+    #[test]
+    fn test_to_platform_string_basic() {
+        // Test with simple key (lowercase stored, uppercase displayed)
+        let shortcut = make_keyboard_shortcut(
+            "a".into(),
+            KeyboardModifiers { alt: false, control: true, shift: false, meta: false },
+            false,
+            false,
+        );
+        
+        let result = shortcut.to_platform_string();
+        #[cfg(target_os = "macos")]
+        assert_eq!(result.as_str(), "⌃A");
+        
+        #[cfg(target_os = "windows")]
+        assert_eq!(result.as_str(), "Ctrl+A");
+        
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        assert_eq!(result.as_str(), "Control+A");
+    }
+
+    #[test]
+    fn test_to_platform_string_all_modifiers() {
+        // Test with all modifiers
+        let shortcut = make_keyboard_shortcut(
+            "a".into(),
+            KeyboardModifiers { alt: true, control: true, shift: true, meta: true },
+            false,
+            false,
+        );
+        
+        let result = shortcut.to_platform_string();
+        #[cfg(target_os = "macos")]
+        assert_eq!(result.as_str(), "⌃⌥⇧⌘A");
+        
+        #[cfg(target_os = "windows")]
+        assert_eq!(result.as_str(), "Ctrl+Alt+Shift+Win+A");
+        
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        assert_eq!(result.as_str(), "Control+Alt+Shift+Super+A");
+    }
+
+    #[test]
+    fn test_to_platform_string_escape_key() {
+        // Test with Escape key
+        let shortcut = make_keyboard_shortcut(
+            "\u{1b}".into(),
+            KeyboardModifiers { alt: false, control: true, shift: true, meta: false },
+            false,
+            false,
+        );
+        
+        let result = shortcut.to_platform_string();
+        #[cfg(target_os = "macos")]
+        assert_eq!(result.as_str(), "⌃⇧Escape");
+        
+        #[cfg(target_os = "windows")]
+        assert_eq!(result.as_str(), "Ctrl+Shift+Escape");
+        
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        assert_eq!(result.as_str(), "Control+Shift+Escape");
+    }
+
+    #[test]
+    fn test_to_platform_string_ignore_shift() {
+        // Test with ignore_shift
+        let shortcut = make_keyboard_shortcut(
+            "+".into(),
+            KeyboardModifiers { alt: false, control: true, shift: false, meta: false },
+            true,  // ignore_shift
+            false,
+        );
+        
+        let result = shortcut.to_platform_string();
+        // When ignore_shift is true, Shift is not shown
+        #[cfg(target_os = "macos")]
+        assert_eq!(result.as_str(), "⌃+");
+        
+        #[cfg(target_os = "windows")]
+        assert_eq!(result.as_str(), "Ctrl++");
+        
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        assert_eq!(result.as_str(), "Control++");
+    }
+
+    #[test]
+    fn test_to_platform_string_ignore_alt() {
+        // Test with ignore_alt
+        let shortcut = make_keyboard_shortcut(
+            "a".into(),
+            KeyboardModifiers { alt: true, control: true, shift: false, meta: false },
+            false,
+            true,  // ignore_alt
+        );
+        
+        let result = shortcut.to_platform_string();
+        // When ignore_alt is true, Alt/Option is not shown
+        #[cfg(target_os = "macos")]
+        assert_eq!(result.as_str(), "⌃A");
+        
+        #[cfg(target_os = "windows")]
+        assert_eq!(result.as_str(), "Ctrl+A");
+        
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        assert_eq!(result.as_str(), "Control+A");
+    }
+
+    #[test]
+    fn test_to_platform_string_special_keys() {
+        // Test various special keys
+        let test_keys: alloc::vec::Vec<(&str, &str)> = alloc::vec![
+            ("\u{1b}", "Escape"),
+            ("\r", "Enter"),
+            ("\t", "Tab"),
+            (" ", "Space"),
+            ("\u{8}", "Backspace"),
+        ];
+        
+        for (key_code, expected_name) in test_keys {
+            let shortcut = make_keyboard_shortcut(
+                SharedString::from(key_code),
+                KeyboardModifiers { alt: false, control: false, shift: false, meta: false },
+                false,
+                false,
+            );
+            
+            let result = shortcut.to_platform_string();
+            assert_eq!(result.as_str(), expected_name);
+        }
+    }
+
+    #[test]
+    fn test_to_platform_string_empty_key() {
+        // Test with empty key
+        let shortcut = make_keyboard_shortcut(
+            "".into(),
+            KeyboardModifiers { alt: false, control: true, shift: false, meta: false },
+            false,
+            false,
+        );
+        
+        let result = shortcut.to_platform_string();
+        assert_eq!(result.as_str(), "");
+    }
+
+    #[test]
+    fn test_to_platform_string_plus_minus() {
+        // Test special characters that need to be handled carefully
+        let shortcut_plus = make_keyboard_shortcut(
+            "+".into(),
+            KeyboardModifiers { alt: false, control: true, shift: false, meta: false },
+            false,
+            false,
+        );
+        
+        let result = shortcut_plus.to_platform_string();
+        #[cfg(target_os = "macos")]
+        assert_eq!(result.as_str(), "⌃+");
+        
+        #[cfg(target_os = "windows")]
+        assert_eq!(result.as_str(), "Ctrl++");
+        
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        assert_eq!(result.as_str(), "Control++");
     }
 }
