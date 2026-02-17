@@ -1295,168 +1295,62 @@ mod tests {
     extern crate alloc;
 
     #[test]
-    fn test_to_platform_string_basic() {
-        // Test with simple key (lowercase stored, uppercase displayed)
-        let shortcut = make_keyboard_shortcut(
-            "a".into(),
-            KeyboardModifiers { alt: false, control: true, shift: false, meta: false },
-            false,
-            false,
-        );
-        
-        let result = shortcut.to_platform_string();
-        #[cfg(target_os = "macos")]
-        assert_eq!(result.as_str(), "⌃A");
-        
-        #[cfg(target_os = "windows")]
-        assert_eq!(result.as_str(), "Ctrl+A");
-        
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        assert_eq!(result.as_str(), "Control+A");
-    }
-
-    #[test]
-    fn test_to_platform_string_all_modifiers() {
-        // Test with all modifiers
-        let shortcut = make_keyboard_shortcut(
-            "a".into(),
-            KeyboardModifiers { alt: true, control: true, shift: true, meta: true },
-            false,
-            false,
-        );
-        
-        let result = shortcut.to_platform_string();
-        #[cfg(target_os = "macos")]
-        assert_eq!(result.as_str(), "⌃⌥⇧⌘A");
-        
-        #[cfg(target_os = "windows")]
-        assert_eq!(result.as_str(), "Ctrl+Alt+Shift+Win+A");
-        
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        assert_eq!(result.as_str(), "Control+Alt+Shift+Super+A");
-    }
-
-    #[test]
-    fn test_to_platform_string_escape_key() {
-        // Test with Escape key - use correct unicode value from key_codes.rs
-        let shortcut = make_keyboard_shortcut(
-            "\u{001b}".into(),
-            KeyboardModifiers { alt: false, control: true, shift: true, meta: false },
-            false,
-            false,
-        );
-        
-        let result = shortcut.to_platform_string();
-        #[cfg(target_os = "macos")]
-        assert_eq!(result.as_str(), "⌃⇧Escape");
-        
-        #[cfg(target_os = "windows")]
-        assert_eq!(result.as_str(), "Ctrl+Shift+Escape");
-        
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        assert_eq!(result.as_str(), "Control+Shift+Escape");
-    }
-
-    #[test]
-    fn test_to_platform_string_ignore_shift() {
-        // Test with ignore_shift
-        let shortcut = make_keyboard_shortcut(
-            "+".into(),
-            KeyboardModifiers { alt: false, control: true, shift: false, meta: false },
-            true,  // ignore_shift
-            false,
-        );
-        
-        let result = shortcut.to_platform_string();
-        // When ignore_shift is true, Shift is not shown
-        #[cfg(target_os = "macos")]
-        assert_eq!(result.as_str(), "⌃+");
-        
-        #[cfg(target_os = "windows")]
-        assert_eq!(result.as_str(), "Ctrl++");
-        
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        assert_eq!(result.as_str(), "Control++");
-    }
-
-    #[test]
-    fn test_to_platform_string_ignore_alt() {
-        // Test with ignore_alt
-        let shortcut = make_keyboard_shortcut(
-            "a".into(),
-            KeyboardModifiers { alt: true, control: true, shift: false, meta: false },
-            false,
-            true,  // ignore_alt
-        );
-        
-        let result = shortcut.to_platform_string();
-        // When ignore_alt is true, Alt/Option is not shown
-        #[cfg(target_os = "macos")]
-        assert_eq!(result.as_str(), "⌃A");
-        
-        #[cfg(target_os = "windows")]
-        assert_eq!(result.as_str(), "Ctrl+A");
-        
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        assert_eq!(result.as_str(), "Control+A");
-    }
-
-    #[test]
-    fn test_to_platform_string_special_keys() {
-        // Test various special keys using correct unicode values from key_codes.rs
-        let test_keys: alloc::vec::Vec<(&str, &str)> = alloc::vec![
-            ("\u{001b}", "Escape"),   // Escape
-            ("\u{000a}", "Return"),   // Return/Enter
-            ("\u{0009}", "Tab"),      // Tab
-            ("\u{0020}", "Space"),    // Space
-            ("\u{0008}", "Backspace"), // Backspace
+    fn test_to_platform_string() {
+        // Test cases: (key, modifiers, ignore_shift, ignore_alt, expected_macos, expected_windows, expected_linux)
+        let test_cases = [
+            // Basic key with control
+            ("a", KeyboardModifiers { alt: false, control: true, shift: false, meta: false }, false, false,
+             "⌃A", "Ctrl+A", "Control+A"),
+            
+            // All modifiers
+            ("a", KeyboardModifiers { alt: true, control: true, shift: true, meta: true }, false, false,
+             "⌃⌥⇧⌘A", "Ctrl+Alt+Shift+Win+A", "Control+Alt+Shift+Super+A"),
+            
+            // Escape key with control and shift
+            ("\u{001b}", KeyboardModifiers { alt: false, control: true, shift: true, meta: false }, false, false,
+             "⌃⇧Escape", "Ctrl+Shift+Escape", "Control+Shift+Escape"),
+            
+            // Plus key with ignore_shift
+            ("+", KeyboardModifiers { alt: false, control: true, shift: false, meta: false }, true, false,
+             "⌃+", "Ctrl++", "Control++"),
+            
+            // Key with ignore_alt
+            ("a", KeyboardModifiers { alt: true, control: true, shift: false, meta: false }, false, true,
+             "⌃A", "Ctrl+A", "Control+A"),
+            
+            // Empty key
+            ("", KeyboardModifiers { alt: false, control: true, shift: false, meta: false }, false, false,
+             "", "", ""),
+            
+            // Special keys
+            ("\u{000a}", KeyboardModifiers { alt: false, control: false, shift: false, meta: false }, false, false,
+             "Return", "Return", "Return"),
+            ("\u{0009}", KeyboardModifiers { alt: false, control: false, shift: false, meta: false }, false, false,
+             "Tab", "Tab", "Tab"),
+            ("\u{0020}", KeyboardModifiers { alt: false, control: false, shift: false, meta: false }, false, false,
+             "Space", "Space", "Space"),
+            ("\u{0008}", KeyboardModifiers { alt: false, control: false, shift: false, meta: false }, false, false,
+             "Backspace", "Backspace", "Backspace"),
         ];
         
-        for (key_code, expected_name) in test_keys {
+        for (key, modifiers, ignore_shift, ignore_alt, _expected_macos, _expected_windows, _expected_linux) in test_cases {
             let shortcut = make_keyboard_shortcut(
-                SharedString::from(key_code),
-                KeyboardModifiers { alt: false, control: false, shift: false, meta: false },
-                false,
-                false,
+                key.into(),
+                modifiers,
+                ignore_shift,
+                ignore_alt,
             );
             
             let result = shortcut.to_platform_string();
-            assert_eq!(result.as_str(), expected_name);
+            
+            #[cfg(target_os = "macos")]
+            assert_eq!(result.as_str(), _expected_macos, "Failed for key: {:?}", key);
+            
+            #[cfg(target_os = "windows")]
+            assert_eq!(result.as_str(), _expected_windows, "Failed for key: {:?}", key);
+            
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            assert_eq!(result.as_str(), _expected_linux, "Failed for key: {:?}", key);
         }
-    }
-
-    #[test]
-    fn test_to_platform_string_empty_key() {
-        // Test with empty key
-        let shortcut = make_keyboard_shortcut(
-            "".into(),
-            KeyboardModifiers { alt: false, control: true, shift: false, meta: false },
-            false,
-            false,
-        );
-        
-        let result = shortcut.to_platform_string();
-        assert_eq!(result.as_str(), "");
-    }
-
-    #[test]
-    fn test_to_platform_string_plus_minus() {
-        // Test special characters that need to be handled carefully
-        let shortcut_plus = make_keyboard_shortcut(
-            "+".into(),
-            KeyboardModifiers { alt: false, control: true, shift: false, meta: false },
-            false,
-            false,
-        );
-        
-        let result = shortcut_plus.to_platform_string();
-        #[cfg(target_os = "macos")]
-        assert_eq!(result.as_str(), "⌃+");
-        
-        #[cfg(target_os = "windows")]
-        assert_eq!(result.as_str(), "Ctrl++");
-        
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        assert_eq!(result.as_str(), "Control++");
     }
 }
