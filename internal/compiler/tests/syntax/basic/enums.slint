@@ -3,15 +3,19 @@
 
 enum Xyz {
     hello-hello,
+//  >         <note{first value here}
     HelloHello,
 //  >        <error{Duplicated enum value 'HelloHello'}
     Abc,
+//  > <note{first value here}
     Cde,
+//  > <note{first value here}
     Abc,
 //  > <error{Duplicated enum value 'Abc'}
     cde,
 //  > <error{Duplicated enum value 'cde'}
     CDE, // this one is not duplicated
+//  > <note{first value here}
     Xyz,
 //  > <error{Enum 'Xyz' can't have a value with the same name}
     c-dE

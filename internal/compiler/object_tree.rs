@@ -24,7 +24,7 @@ use itertools::{Either, Itertools};
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
@@ -123,21 +123,24 @@ impl Document {
                 assert!(diag.has_errors());
                 return;
             };
-            let mut existing_names = HashSet::new();
+            let mut existing_names: HashMap<String, SourceLocation> = HashMap::new();
             let values = n
                 .EnumValue()
                 .filter_map(|v| {
                     let value = parser::identifier_text(&v)?;
+                    let pascal_name = crate::generator::to_pascal_case(&value);
                     if value == name {
                         diag.push_error(
                             format!("Enum '{value}' can't have a value with the same name"),
                             &v,
                         );
                         None
-                    } else if !existing_names.insert(crate::generator::to_pascal_case(&value)) {
+                    } else if let Some(first_location) = existing_names.get(&pascal_name) {
                         diag.push_error(format!("Duplicated enum value '{value}'"), &v);
+                        diag.push_note_with_span("first value here".into(), first_location.clone());
                         None
                     } else {
+                        existing_names.insert(pascal_name, v.to_source_location());
                         Some(value)
                     }
                 })
@@ -1321,11 +1324,17 @@ impl Element {
             } = r.lookup_property(&name);
             if !matches!(maybe_existing_prop_type, Type::Invalid) {
                 if matches!(maybe_existing_prop_type, Type::Callback { .. }) {
-                    if r.property_declarations.contains_key(&name) {
+                    if let Some(existing_decl) = r.property_declarations.get(&name) {
                         diag.push_error(
                             "Duplicated callback declaration".into(),
                             &sig_decl.DeclaredIdentifier(),
                         );
+                        if let Some(node) = &existing_decl.node {
+                            diag.push_note_with_span(
+                                "first declared here".into(),
+                                node.to_source_location(),
+                            );
+                        }
                     } else {
                         diag.push_error(
                             format!("Cannot override callback '{existing_name}'"),
@@ -1532,10 +1541,15 @@ impl Element {
                 Entry::Vacant(e) => {
                     e.insert(BindingExpression::new_uncompiled(con_node.clone().into()).into());
                 }
-                Entry::Occupied(_) => diag.push_error(
-                    "Duplicated callback".into(),
-                    &con_node.child_token(SyntaxKind::Identifier).unwrap(),
-                ),
+                Entry::Occupied(occ) => {
+                    diag.push_error(
+                        "Duplicated callback".into(),
+                        &con_node.child_token(SyntaxKind::Identifier).unwrap(),
+                    );
+                    if let Some(span) = occ.get().borrow().span.clone() {
+                        diag.push_note_with_span("first handler here".into(), span);
+                    }
+                }
             }
         }
 
