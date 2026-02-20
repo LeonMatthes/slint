@@ -24,7 +24,7 @@ use itertools::{Either, Itertools};
 use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
@@ -123,21 +123,24 @@ impl Document {
                 assert!(diag.has_errors());
                 return;
             };
-            let mut existing_names = HashSet::new();
+            let mut existing_names: HashMap<String, SourceLocation> = HashMap::new();
             let values = n
                 .EnumValue()
                 .filter_map(|v| {
                     let value = parser::identifier_text(&v)?;
+                    let pascal_name = crate::generator::to_pascal_case(&value);
                     if value == name {
                         diag.push_error(
                             format!("Enum '{value}' can't have a value with the same name"),
                             &v,
                         );
                         None
-                    } else if !existing_names.insert(crate::generator::to_pascal_case(&value)) {
+                    } else if let Some(first_location) = existing_names.get(&pascal_name) {
                         diag.push_error(format!("Duplicated enum value '{value}'"), &v);
+                        diag.push_note_with_span("Value first defined here".into(), first_location.clone());
                         None
                     } else {
+                        existing_names.insert(pascal_name, v.to_source_location());
                         Some(value)
                     }
                 })
@@ -1264,23 +1267,33 @@ impl Element {
                     Entry::Vacant(e) => {
                         e.insert(BindingExpression::new_uncompiled(csn.into()).into());
                     }
-                    Entry::Occupied(_) => {
+                    Entry::Occupied(occ) => {
                         diag.push_error(
                             "Duplicated property binding".into(),
                             &prop_decl.DeclaredIdentifier(),
                         );
+                        if let Some(span) =
+                            Element::binding_identifier_location(&occ.get().borrow())
+                        {
+                            diag.push_note_with_span("Binding first defined here".into(), span);
+                        }
                     }
                 }
             }
-            if let Some(csn) = prop_decl.TwoWayBinding()
-                && r.bindings
-                    .insert(prop_name.into(), BindingExpression::new_uncompiled(csn.into()).into())
-                    .is_some()
-            {
-                diag.push_error(
-                    "Duplicated property binding".into(),
-                    &prop_decl.DeclaredIdentifier(),
-                );
+            if let Some(csn) = prop_decl.TwoWayBinding() {
+                let old =
+                    r.bindings.insert(prop_name.into(), BindingExpression::new_uncompiled(csn.into()).into());
+                if let Some(old) = old {
+                    diag.push_error(
+                        "Duplicated property binding".into(),
+                        &prop_decl.DeclaredIdentifier(),
+                    );
+                    if let Some(span) =
+                        Element::binding_identifier_location(&old.borrow())
+                    {
+                        diag.push_note_with_span("Binding first defined here".into(), span);
+                    }
+                }
             }
         }
 
@@ -1526,10 +1539,15 @@ impl Element {
                 Entry::Vacant(e) => {
                     e.insert(BindingExpression::new_uncompiled(con_node.clone().into()).into());
                 }
-                Entry::Occupied(_) => diag.push_error(
-                    "Duplicated callback".into(),
-                    &con_node.child_token(SyntaxKind::Identifier).unwrap(),
-                ),
+                Entry::Occupied(occ) => {
+                    diag.push_error(
+                        "Duplicated callback".into(),
+                        &con_node.child_token(SyntaxKind::Identifier).unwrap(),
+                    );
+                    if let Some(span) = Element::binding_identifier_location(&occ.get().borrow()) {
+                        diag.push_note_with_span("Handler first defined here".into(), span);
+                    }
+                }
             }
         }
 
@@ -1904,6 +1922,33 @@ impl Element {
         )
     }
 
+    /// Find the source location of the identifier that names this binding, for use in note diagnostics.
+    ///
+    /// The identifier location is found by navigating the syntax tree from the stored expression node:
+    /// - For `Binding` nodes: the expression is a `BindingExpression` child, parent has the `Identifier` token
+    /// - For `TwoWayBinding` at element level: the node itself has the `Identifier` token
+    /// - For `PropertyDeclaration`-level bindings: the parent has a `DeclaredIdentifier` child with the `Identifier`
+    /// - For `CallbackConnection`: the node itself has the `Identifier` token directly
+    fn binding_identifier_location(binding: &BindingExpression) -> Option<SourceLocation> {
+        let crate::expression_tree::Expression::Uncompiled(node) = &binding.expression else {
+            return binding.span.clone();
+        };
+        // Try parent's DeclaredIdentifier first (PropertyDeclaration, CallbackDeclaration cases),
+        // because those nodes also contain keyword Identifier tokens (e.g. "property", "callback")
+        // that would otherwise be found first by a plain child_token(Identifier) search.
+        // Fall back to parent's direct Identifier token (Binding node case).
+        node.parent()
+            .and_then(|p| {
+                p.child_node(SyntaxKind::DeclaredIdentifier)
+                    .and_then(|d| d.child_token(SyntaxKind::Identifier))
+                    // Fallback: direct Identifier token on the parent (Binding node)
+                    .or_else(|| p.child_token(SyntaxKind::Identifier))
+            })
+            // Try the node's own Identifier token (element-level TwoWayBinding, CallbackConnection)
+            .or_else(|| node.child_token(SyntaxKind::Identifier))
+            .map(|t| t.to_source_location())
+    }
+
     fn parse_bindings(
         &mut self,
         bindings: impl Iterator<Item = (crate::parser::SyntaxToken, SyntaxNode)>,
@@ -1968,8 +2013,13 @@ impl Element {
             }
 
             match self.bindings.entry(lookup_result.resolved_name.into()) {
-                Entry::Occupied(_) => {
+                Entry::Occupied(occ) => {
                     diag.push_error("Duplicated property binding".into(), &name_token);
+                    if let Some(span) =
+                        Self::binding_identifier_location(&occ.get().borrow())
+                    {
+                        diag.push_note_with_span("Binding first defined here".into(), span);
+                    }
                 }
                 Entry::Vacant(entry) => {
                     entry.insert(BindingExpression::new_uncompiled(b).into());

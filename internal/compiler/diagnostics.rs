@@ -259,7 +259,7 @@ pub enum DiagnosticLevel {
     Error,
     /// The diagnostic found is a warning.
     Warning,
-    /// The diagnostic is an note to further help with the error or warning
+    /// The diagnostic is a note providing additional context for Warnings or Errors.
     Note,
 }
 
