@@ -8,14 +8,14 @@ SubElement := Rectangle {
     foo := Rectangle {
         background: yellow;
         hello := Rectangle {}
-//               >        <note{first use of this id}
-//               >        <^note{first use of this id}
+//      >   <note{Id first defined here}
+//      >   <^note{Id first defined here}
     }
 
     unique := Rectangle {
         background: yellow;
         world := Rectangle {}
-//               >        <note{first use of this id}
+//      >   <note{Id first defined here}
     }
 
     if (true) : hello := Rectangle {
@@ -33,11 +33,11 @@ export TestCase := Rectangle {
 
     unique := Rectangle {
         foo := SubElement { }
-//             >         <note{first use of this id}
+//      > <note{Id first defined here}
     }
 
     bar := TouchArea {}
-//         >        <note{first use of this id}
+//  > <note{Id first defined here}
 
     Rectangle {
         foo := Text {}

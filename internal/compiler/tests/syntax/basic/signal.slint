@@ -9,7 +9,6 @@ Base := Rectangle {
 export SubElements := Rectangle {
 //                 ><warning{':=' to declare a component is deprecated. The new syntax declare components with 'component MyComponent {'. Read the documentation for more info}
     callback foobar;
-//  >              <note{first declared here}
     callback foobar;
 //           >    <error{Duplicated callback declaration}
 
@@ -31,10 +30,9 @@ export SubElements := Rectangle {
 
     TouchArea {
         clicked => { foobar() }
-//      >note{first handler here}
+//      >     <note{Handler first defined here}
         clicked => { foobar() }
 //      >     <error{Duplicated callback}
-//     <^note{first handler here}
     }
 
     does_not_exist => {

@@ -137,7 +137,7 @@ impl Document {
                         None
                     } else if let Some(first_location) = existing_names.get(&pascal_name) {
                         diag.push_error(format!("Duplicated enum value '{value}'"), &v);
-                        diag.push_note_with_span("first value here".into(), first_location.clone());
+                        diag.push_note_with_span("Value first defined here".into(), first_location.clone());
                         None
                     } else {
                         existing_names.insert(pascal_name, v.to_source_location());
@@ -1272,8 +1272,10 @@ impl Element {
                             "Duplicated property binding".into(),
                             &prop_decl.DeclaredIdentifier(),
                         );
-                        if let Some(span) = occ.get().borrow().span.clone() {
-                            diag.push_note_with_span("first binding here".into(), span);
+                        if let Some(span) =
+                            Element::binding_identifier_location(&occ.get().borrow())
+                        {
+                            diag.push_note_with_span("Binding first defined here".into(), span);
                         }
                     }
                 }
@@ -1286,8 +1288,10 @@ impl Element {
                         "Duplicated property binding".into(),
                         &prop_decl.DeclaredIdentifier(),
                     );
-                    if let Some(span) = old.borrow().span.clone() {
-                        diag.push_note_with_span("first binding here".into(), span);
+                    if let Some(span) =
+                        Element::binding_identifier_location(&old.borrow())
+                    {
+                        diag.push_note_with_span("Binding first defined here".into(), span);
                     }
                 }
             }
@@ -1324,17 +1328,11 @@ impl Element {
             } = r.lookup_property(&name);
             if !matches!(maybe_existing_prop_type, Type::Invalid) {
                 if matches!(maybe_existing_prop_type, Type::Callback { .. }) {
-                    if let Some(existing_decl) = r.property_declarations.get(&name) {
+                    if r.property_declarations.contains_key(&name) {
                         diag.push_error(
                             "Duplicated callback declaration".into(),
                             &sig_decl.DeclaredIdentifier(),
                         );
-                        if let Some(node) = &existing_decl.node {
-                            diag.push_note_with_span(
-                                "first declared here".into(),
-                                node.to_source_location(),
-                            );
-                        }
                     } else {
                         diag.push_error(
                             format!("Cannot override callback '{existing_name}'"),
@@ -1546,8 +1544,8 @@ impl Element {
                         "Duplicated callback".into(),
                         &con_node.child_token(SyntaxKind::Identifier).unwrap(),
                     );
-                    if let Some(span) = occ.get().borrow().span.clone() {
-                        diag.push_note_with_span("first handler here".into(), span);
+                    if let Some(span) = Element::binding_identifier_location(&occ.get().borrow()) {
+                        diag.push_note_with_span("Handler first defined here".into(), span);
                     }
                 }
             }
@@ -1924,6 +1922,33 @@ impl Element {
         )
     }
 
+    /// Find the source location of the identifier that names this binding, for use in note diagnostics.
+    ///
+    /// The identifier location is found by navigating the syntax tree from the stored expression node:
+    /// - For `Binding` nodes: the expression is a `BindingExpression` child, parent has the `Identifier` token
+    /// - For `TwoWayBinding` at element level: the node itself has the `Identifier` token
+    /// - For `PropertyDeclaration`-level bindings: the parent has a `DeclaredIdentifier` child with the `Identifier`
+    /// - For `CallbackConnection`: the node itself has the `Identifier` token directly
+    fn binding_identifier_location(binding: &BindingExpression) -> Option<SourceLocation> {
+        let crate::expression_tree::Expression::Uncompiled(node) = &binding.expression else {
+            return binding.span.clone();
+        };
+        // Try parent's DeclaredIdentifier first (PropertyDeclaration, CallbackDeclaration cases),
+        // because those nodes also contain keyword Identifier tokens (e.g. "property", "callback")
+        // that would otherwise be found first by a plain child_token(Identifier) search.
+        // Fall back to parent's direct Identifier token (Binding node case).
+        node.parent()
+            .and_then(|p| {
+                p.child_node(SyntaxKind::DeclaredIdentifier)
+                    .and_then(|d| d.child_token(SyntaxKind::Identifier))
+                    // Fallback: direct Identifier token on the parent (Binding node)
+                    .or_else(|| p.child_token(SyntaxKind::Identifier))
+            })
+            // Try the node's own Identifier token (element-level TwoWayBinding, CallbackConnection)
+            .or_else(|| node.child_token(SyntaxKind::Identifier))
+            .map(|t| t.to_source_location())
+    }
+
     fn parse_bindings(
         &mut self,
         bindings: impl Iterator<Item = (crate::parser::SyntaxToken, SyntaxNode)>,
@@ -1990,8 +2015,10 @@ impl Element {
             match self.bindings.entry(lookup_result.resolved_name.into()) {
                 Entry::Occupied(occ) => {
                     diag.push_error("Duplicated property binding".into(), &name_token);
-                    if let Some(span) = occ.get().borrow().span.clone() {
-                        diag.push_note_with_span("first binding here".into(), span);
+                    if let Some(span) =
+                        Self::binding_identifier_location(&occ.get().borrow())
+                    {
+                        diag.push_note_with_span("Binding first defined here".into(), span);
                     }
                 }
                 Entry::Vacant(entry) => {

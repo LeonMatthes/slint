@@ -15,7 +15,7 @@ export Xxx := Rectangle {
 
     // #3085
     callback row-pointer-event <=> dontexist;
-//                             >           <note{first handler here}
+//           >               <note{Handler first defined here}
 //                                 >       <^error{Unknown unqualified identifier 'dontexist'}
 //  >                                       <^^error{Binding to callback 'row-pointer-event' must bind to another callback}
     row-pointer-event => {}
