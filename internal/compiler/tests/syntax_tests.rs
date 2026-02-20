@@ -127,7 +127,7 @@ fn extract_expected_diags(source: &str) -> Vec<ExpectedDiagnostic> {
         r"\n *//[^\n\^\|<>]*((\^)|(\|)|((>)?( *<)?))(\^*)(<*)(error|warning|note)\{([^\n]*)\}",
     )
     .unwrap();
-    //      regex::Regex::new(r"\n *//[^\n\^<>]*(\^|>|<)(\^*)(error|warning)\{([^\n]*)\}").unwrap();
+
     for m in re.captures_iter(source) {
         let line_begin_offset = m.get(0).unwrap().start();
         let start_column = m.get(1).unwrap().start()
@@ -356,16 +356,16 @@ fn update(
         let mut insert_range_at = |range: &str, l, c: usize| {
             let column_adjust = if c < 3 { "<".repeat(3 - c) } else { "".to_string() };
             let byte_offset = lines[l - 1] + 1;
+            let level = match d.level() {
+                DiagnosticLevel::Error => "error",
+                DiagnosticLevel::Warning => "warning",
+                DiagnosticLevel::Note => "note",
+                _ => todo!(),
+            };
             let to_insert = format!(
-                "//{indent}{range}{adjust}{column_adjust}{error_or_warning}{{{message}}}\n",
+                "//{indent}{range}{adjust}{column_adjust}{level}{{{message}}}\n",
                 indent = " ".repeat(c.max(3) - 3),
                 adjust = "^".repeat(last_line_adjust[l - 1]),
-                error_or_warning = match d.level() {
-                    DiagnosticLevel::Error => "error",
-                    DiagnosticLevel::Warning => "warning",
-                    DiagnosticLevel::Note => "note",
-                    _ => "error",
-                },
                 message = d.message().replace('\n', "↵").replace(env!("CARGO_MANIFEST_DIR"), "📂")
             );
             if byte_offset > source.len() {

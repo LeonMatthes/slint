@@ -2516,6 +2516,9 @@ fn compile_expression(expr: &Expression, ctx: &EvaluationContext) -> TokenStream
                     });
                     quote!(match #f { #(#cases,)*  _ => sp::SharedString::default() })
                 }
+                (Type::KeyboardShortcutType, Type::String) => {
+                    quote!(#f.to_platform_string())
+                }
                 (_, Type::Void) => {
                     quote!({#f;})
                 }
@@ -3608,7 +3611,11 @@ fn compile_builtin_function_call(
         BuiltinFunction::ParseMarkdown => {
             let format_string = a.next().unwrap();
             let args = a.next().unwrap();
-            quote!(sp::parse_markdown::<sp::SharedString>(&#format_string, &#args))
+            quote!(sp::parse_markdown::<sp::StyledText>(&#format_string, &#args))
+        }
+        BuiltinFunction::StringToStyledText => {
+            let string = a.next().unwrap();
+            quote!(sp::string_to_styled_text(#string.to_string()))
         }
     }
 }

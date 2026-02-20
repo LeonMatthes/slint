@@ -59,9 +59,9 @@ mod image;
 pub use self::image::*;
 mod drag_n_drop;
 pub use drag_n_drop::*;
-#[cfg(feature = "std")]
+#[cfg(feature = "path")]
 mod path;
-#[cfg(feature = "std")]
+#[cfg(feature = "path")]
 pub use path::*;
 
 /// Alias for `&mut dyn ItemRenderer`. Required so cbindgen generates the ItemVTable
@@ -682,8 +682,16 @@ declare_item_vtable! {
     fn slint_get_FocusScopeVTable() -> FocusScopeVTable for FocusScope
 }
 
+crate::declare_item_vtable! {
+    fn slint_get_ShortcutVTable() -> ShortcutVTable for Shortcut
+}
+
 declare_item_vtable! {
     fn slint_get_SwipeGestureHandlerVTable() -> SwipeGestureHandlerVTable for SwipeGestureHandler
+}
+
+declare_item_vtable! {
+    fn slint_get_PinchGestureHandlerVTable() -> PinchGestureHandlerVTable for PinchGestureHandler
 }
 
 #[repr(C)]
@@ -1793,7 +1801,7 @@ declare_item_vtable! {
     fn slint_get_ClippedImageVTable() -> ClippedImageVTable for ClippedImage
 }
 
-#[cfg(feature = "std")]
+#[cfg(feature = "path")]
 declare_item_vtable! {
     fn slint_get_PathVTable() -> PathVTable for Path
 }

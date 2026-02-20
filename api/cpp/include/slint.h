@@ -295,10 +295,17 @@ inline SharedString translate(const SharedString &original, const SharedString &
 }
 
 inline StyledText parse_markdown(SharedString format_string,
-                                 cbindgen_private::Slice<SharedString> args)
+                                 cbindgen_private::Slice<StyledText> args)
 {
     StyledText result;
     cbindgen_private::slint_parse_markdown(format_string, args, &result);
+    return result;
+}
+
+inline StyledText string_to_styled_text(SharedString text)
+{
+    StyledText result;
+    cbindgen_private::slint_string_to_styled_text(text, &result);
     return result;
 }
 
@@ -380,6 +387,15 @@ cbindgen_private::Flickable::Flickable()
 cbindgen_private::Flickable::~Flickable()
 {
     slint_flickable_data_free(&data);
+}
+
+cbindgen_private::FocusScope::FocusScope()
+{
+    slint_maybe_shortcut_list_init(&shortcuts);
+}
+cbindgen_private::FocusScope::~FocusScope()
+{
+    slint_maybe_shortcut_list_free(&shortcuts);
 }
 
 cbindgen_private::NativeStyleMetrics::NativeStyleMetrics(void *)

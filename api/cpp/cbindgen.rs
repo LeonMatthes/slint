@@ -299,7 +299,9 @@ fn gen_corelib(
         "ClippedImage",
         "TouchArea",
         "FocusScope",
+        "Shortcut",
         "SwipeGestureHandler",
+        "PinchGestureHandler",
         "Flickable",
         "SimpleText",
         "StyledTextItem",
@@ -527,7 +529,7 @@ fn gen_corelib(
             "",
         ),
         (
-            vec!["MouseEvent", "KeyboardShortcut"],
+            vec!["MouseEvent", "TouchPhase", "KeyboardShortcut"],
             "slint_events_internal.h",
             "#include \"slint_point.h\"
             namespace slint::cbindgen_private {
@@ -544,7 +546,8 @@ fn gen_corelib(
         let mut special_config = config.clone();
         special_config.export.include = rust_types.iter().map(|s| s.to_string()).collect();
         special_config.export.exclude = [
-            "slint_keyboard_shortcut_to_string",
+            "slint_keyboard_shortcut_debug_string",
+            "slint_keyboard_shortcut_to_platform_string",
             "slint_keyboard_shortcut_matches",
             "slint_keyboard_shortcut",
             "slint_visit_item_tree",
@@ -723,6 +726,11 @@ fn gen_corelib(
     ~WindowEvent() {}"
             .into(),
     );
+    config
+        .export
+        .body
+        .insert("FocusScope".to_owned(), "    inline FocusScope(); inline ~FocusScope();".into());
+    config.export.pre_body.insert("MaybeShortcutList".to_owned(), "struct ShortcutList;".into());
     config
         .export
         .body

@@ -3549,6 +3549,16 @@ fn compile_expression(expr: &llr::Expression, ctx: &EvaluationContext) -> String
                         cases.join(" ")
                     )
                 }
+                (Type::KeyboardShortcutType, Type::String) => {
+                    format!(
+                        "[&](){{\
+                            slint::SharedString s;
+                            auto shortcut = {f};
+                            slint::cbindgen_private::slint_keyboard_shortcut_to_platform_string(&shortcut, &s);
+                            return s;
+                        }}()"
+                    )
+                }
                 _ => f,
             }
         }
@@ -4442,6 +4452,10 @@ fn compile_builtin_function_call(
             let format_string = a.next().unwrap();
             let args = a.next().unwrap();
             format!("slint::private_api::parse_markdown({}, {})", format_string, args)
+        }
+        BuiltinFunction::StringToStyledText => {
+            let string = a.next().unwrap();
+            format!("slint::private_api::string_to_styled_text({})", string)
         }
     }
 }

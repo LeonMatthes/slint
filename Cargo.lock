@@ -3194,20 +3194,20 @@ dependencies = [
 
 [[package]]
 name = "femtovg"
-version = "0.20.1"
+version = "0.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a125295d4de2b2473e731c4612599ba3cdf7e05af6bba16f324ba8ffbf093436"
+checksum = "878199c9bc73ac922ddbd4e2b22c3f14f0b6b1d711709da88d00cbd804870db5"
 dependencies = [
  "bitflags 2.10.0",
  "bytemuck",
  "fnv",
  "glow",
- "image",
  "imgref",
  "itertools 0.14.0",
  "log",
  "rgb",
  "slotmap",
+ "swash",
  "ttf-parser 0.25.1",
  "wasm-bindgen",
  "web-sys",
@@ -3393,17 +3393,6 @@ dependencies = [
  "slotmap",
  "tinyvec",
  "ttf-parser 0.25.1",
-]
-
-[[package]]
-name = "fontdue"
-version = "0.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e57e16b3fe8ff4364c0661fdaac543fb38b29ea9bc9c2f45612d90adf931d2b"
-dependencies = [
- "hashbrown 0.15.5",
- "rayon",
- "ttf-parser 0.21.1",
 ]
 
 [[package]]
@@ -4470,10 +4459,7 @@ version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
- "allocator-api2 0.2.21",
- "equivalent",
  "foldhash 0.1.5",
- "rayon",
 ]
 
 [[package]]
@@ -4820,6 +4806,7 @@ dependencies = [
  "i-slint-core",
  "i-slint-core-macros",
  "image",
+ "include_dir",
  "pb-rs",
  "quick-protobuf",
  "slint",
@@ -4894,7 +4881,6 @@ dependencies = [
  "fdsm",
  "fdsm-ttf-parser",
  "flate2",
- "fontdue",
  "i-slint-common",
  "i-slint-parser-test-macro",
  "image",
@@ -4914,9 +4900,11 @@ dependencies = [
  "rspolib",
  "serde",
  "serde_json",
+ "skrifa",
  "smol_str 0.3.2",
  "spin_on",
  "strum",
+ "swash",
  "typed-index-collections",
  "url",
 ]
@@ -4963,6 +4951,7 @@ dependencies = [
  "slint",
  "static_assertions",
  "strum",
+ "swash",
  "sys-locale",
  "taffy",
  "tempfile",
@@ -5013,7 +5002,6 @@ dependencies = [
  "lyon_path",
  "pin-weak",
  "rgb",
- "ttf-parser 0.25.1",
  "wasm-bindgen",
  "web-sys",
  "wgpu 28.0.0",
@@ -5072,13 +5060,13 @@ dependencies = [
  "clru",
  "derive_more",
  "euclid",
- "fontdue",
  "i-slint-common",
  "i-slint-core",
  "integer-sqrt",
  "lyon_path",
  "num-traits",
  "skrifa",
+ "swash",
  "zeno",
 ]
 
@@ -5275,6 +5263,25 @@ name = "imgref"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7c5cedc30da3a610cac6b4ba17597bdf7152cf974e8aab3afb3d54455e371c8"
+
+[[package]]
+name = "include_dir"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "923d117408f1e49d914f1a379a309cffe4f18c05cf4e3d12e613a15fc81bd0dd"
+dependencies = [
+ "include_dir_macros",
+]
+
+[[package]]
+name = "include_dir_macros"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7cab85a7ed0bd5f0e76d93846e0147172bed2e2d3f859bcc33a8d9699cad1a75"
+dependencies = [
+ "proc-macro2",
+ "quote",
+]
 
 [[package]]
 name = "indexmap"
@@ -7812,9 +7819,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3"
-version = "0.28.0"
+version = "0.28.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcf3ccafdf54c050be48a3a086d372f77ba6615f5057211607cd30e5ac5cec6d"
+checksum = "cf85e27e86080aafd5a22eae58a162e133a589551542b3e5cee4beb27e54f8e1"
 dependencies = [
  "chrono",
  "indexmap",
@@ -7828,18 +7835,18 @@ dependencies = [
 
 [[package]]
 name = "pyo3-build-config"
-version = "0.28.0"
+version = "0.28.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "972720a441c91fd9c49f212a1d2d74c6e3803b231ebc8d66c51efbd7ccab11c8"
+checksum = "8bf94ee265674bf76c09fa430b0e99c26e319c945d96ca0d5a8215f31bf81cf7"
 dependencies = [
  "target-lexicon 0.13.4",
 ]
 
 [[package]]
 name = "pyo3-ffi"
-version = "0.28.0"
+version = "0.28.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5994456d9dab8934d600d3867571b6410f24fbd6002570ad56356733eb54859b"
+checksum = "491aa5fc66d8059dd44a75f4580a2962c1862a1c2945359db36f6c2818b748dc"
 dependencies = [
  "libc",
  "pyo3-build-config",
@@ -7847,9 +7854,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3-macros"
-version = "0.28.0"
+version = "0.28.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11ce9cc8d81b3c4969748807604d92b4eef363c5bb82b1a1bdb34ec6f1093a18"
+checksum = "f5d671734e9d7a43449f8480f8b38115df67bef8d21f76837fa75ee7aaa5e52e"
 dependencies = [
  "proc-macro2",
  "pyo3-macros-backend",
@@ -7859,9 +7866,9 @@ dependencies = [
 
 [[package]]
 name = "pyo3-macros-backend"
-version = "0.28.0"
+version = "0.28.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eaf4b60036a154d23282679b658e3cc7d88d3b8c9a40b43824785f232d2e1b98"
+checksum = "22faaa1ce6c430a1f71658760497291065e6450d7b5dc2bcf254d49f66ee700a"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -9230,6 +9237,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c31071dedf532758ecf3fed987cdb4bd9509f900e026ab684b4ecb81ea49841"
 dependencies = [
  "bytemuck",
+ "core_maths",
  "read-fonts",
 ]
 
@@ -9910,6 +9918,7 @@ version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47846491253e976bdd07d0f9cc24b7daf24720d11309302ccbbc6e6b6e53550a"
 dependencies = [
+ "core_maths",
  "skrifa",
  "yazi",
  "zeno",
@@ -10151,6 +10160,7 @@ dependencies = [
 name = "test-driver-rust"
 version = "1.16.0"
 dependencies = [
+ "i-slint-backend-qt",
  "i-slint-backend-testing",
  "i-slint-compiler",
  "slint",
@@ -10637,12 +10647,6 @@ name = "ttf-parser"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17f77d76d837a7830fe1d4f12b7b4ba4192c1888001c7164257e4bc6d21d96b4"
-
-[[package]]
-name = "ttf-parser"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c591d83f69777866b9126b24c6dd9a18351f177e49d625920d19f989fd31cf8"
 
 [[package]]
 name = "ttf-parser"

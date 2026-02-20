@@ -279,7 +279,8 @@ impl Type {
             | (Type::PhysicalLength, Type::Rem)
             | (Type::Percent, Type::Float32)
             | (Type::Brush, Type::Color)
-            | (Type::Color, Type::Brush) => true,
+            | (Type::Color, Type::Brush)
+            | (Type::KeyboardShortcutType, Type::String) => true,
             (Type::Array(a), Type::Model) if a.is_property_type() => true,
             (Type::Struct(a), Type::Struct(b)) => can_convert_struct(&a.fields, &b.fields),
             (Type::UnitProduct(u), o) => match o.as_unit_product() {
@@ -1017,7 +1018,7 @@ impl Enumeration {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct KeyboardModifiers {
     pub alt: bool,
     pub control: bool,
@@ -1025,18 +1026,12 @@ pub struct KeyboardModifiers {
     pub shift: bool,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct KeyboardShortcut {
     pub key: SmolStr,
     pub modifiers: KeyboardModifiers,
     pub ignore_shift: bool,
     pub ignore_alt: bool,
-}
-
-impl PartialEq for KeyboardShortcut {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
 }
 
 impl std::fmt::Display for KeyboardShortcut {
