@@ -5,9 +5,11 @@ export X := Rectangle {
 //       ><warning{':=' to declare a component is deprecated. The new syntax declare components with 'component MyComponent {'. Read the documentation for more info}
 
     x: 42phx;
+//     >    <note{first binding here}
     x: 32phx;
 //  ^error{Duplicated property binding}
     width: 12phx;
+//         >    <note{first binding here}
     width <=> self.height;
 //  >   <error{Duplicated property binding}
 
@@ -15,6 +17,7 @@ export X := Rectangle {
 //  >       <error{Unknown property not-exist in Rectangle}
 
     property <int> foo: 12;
+//                      > <note{first binding here}
     foo: 13;
 //  > <error{Duplicated property binding}
 

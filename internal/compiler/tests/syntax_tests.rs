@@ -124,7 +124,7 @@ fn extract_expected_diags(source: &str) -> Vec<ExpectedDiagnostic> {
     // carets refers to the number of lines to go back. This is useful when one line of code produces multiple
     // errors or warnings.
     let re = regex::Regex::new(
-        r"\n *//[^\n\^\|<>]*((\^)|(\|)|((>)?( *<)?))(\^*)(<*)(error|warning)\{([^\n]*)\}",
+        r"\n *//[^\n\^\|<>]*((\^)|(\|)|((>)?( *<)?))(\^*)(<*)(error|warning|note)\{([^\n]*)\}",
     )
     .unwrap();
     //      regex::Regex::new(r"\n *//[^\n\^<>]*(\^|>|<)(\^*)(error|warning)\{([^\n]*)\}").unwrap();
@@ -192,6 +192,7 @@ fn extract_expected_diags(source: &str) -> Vec<ExpectedDiagnostic> {
         let expected_diag_level = match warning_or_error {
             "warning" => DiagnosticLevel::Warning,
             "error" => DiagnosticLevel::Error,
+            "note" => DiagnosticLevel::Note,
             _ => panic!("Unsupported diagnostic level {warning_or_error}"),
         };
 
@@ -359,8 +360,12 @@ fn update(
                 "//{indent}{range}{adjust}{column_adjust}{error_or_warning}{{{message}}}\n",
                 indent = " ".repeat(c.max(3) - 3),
                 adjust = "^".repeat(last_line_adjust[l - 1]),
-                error_or_warning =
-                    if d.level() == DiagnosticLevel::Error { "error" } else { "warning" },
+                error_or_warning = match d.level() {
+                    DiagnosticLevel::Error => "error",
+                    DiagnosticLevel::Warning => "warning",
+                    DiagnosticLevel::Note => "note",
+                    _ => "error",
+                },
                 message = d.message().replace('\n', "↵").replace(env!("CARGO_MANIFEST_DIR"), "📂")
             );
             if byte_offset > source.len() {

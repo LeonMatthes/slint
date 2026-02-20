@@ -1264,23 +1264,29 @@ impl Element {
                     Entry::Vacant(e) => {
                         e.insert(BindingExpression::new_uncompiled(csn.into()).into());
                     }
-                    Entry::Occupied(_) => {
+                    Entry::Occupied(occ) => {
                         diag.push_error(
                             "Duplicated property binding".into(),
                             &prop_decl.DeclaredIdentifier(),
                         );
+                        if let Some(span) = occ.get().borrow().span.clone() {
+                            diag.push_note_with_span("first binding here".into(), span);
+                        }
                     }
                 }
             }
-            if let Some(csn) = prop_decl.TwoWayBinding()
-                && r.bindings
-                    .insert(prop_name.into(), BindingExpression::new_uncompiled(csn.into()).into())
-                    .is_some()
-            {
-                diag.push_error(
-                    "Duplicated property binding".into(),
-                    &prop_decl.DeclaredIdentifier(),
-                );
+            if let Some(csn) = prop_decl.TwoWayBinding() {
+                let old =
+                    r.bindings.insert(prop_name.into(), BindingExpression::new_uncompiled(csn.into()).into());
+                if let Some(old) = old {
+                    diag.push_error(
+                        "Duplicated property binding".into(),
+                        &prop_decl.DeclaredIdentifier(),
+                    );
+                    if let Some(span) = old.borrow().span.clone() {
+                        diag.push_note_with_span("first binding here".into(), span);
+                    }
+                }
             }
         }
 
@@ -1968,8 +1974,11 @@ impl Element {
             }
 
             match self.bindings.entry(lookup_result.resolved_name.into()) {
-                Entry::Occupied(_) => {
+                Entry::Occupied(occ) => {
                     diag.push_error("Duplicated property binding".into(), &name_token);
+                    if let Some(span) = occ.get().borrow().span.clone() {
+                        diag.push_note_with_span("first binding here".into(), span);
+                    }
                 }
                 Entry::Vacant(entry) => {
                     entry.insert(BindingExpression::new_uncompiled(b).into());
