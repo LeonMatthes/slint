@@ -263,7 +263,9 @@ pub mod key_codes {
         };
     }
 
-    i_slint_common::for_each_keys!(declare_consts_for_special_keys);
+    i_slint_common::for_each_keys! {
+        declare_consts_for_special_keys
+    }
 }
 
 /// Internal struct to maintain the pressed/released state of the keys that
@@ -428,6 +430,117 @@ pub(crate) mod ffi {
     }
 }
 
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ParseKeyboardShortcutError {
+    InvalidFormat,
+    InvalidModifiers,
+    InvalidKey,
+}
+
+impl core::str::FromStr for KeyboardShortcut {
+    type Err = ParseKeyboardShortcutError;
+
+    fn from_str(mut input: &str) -> Result<Self, Self::Err> {
+        if input.is_empty() {
+            return Ok(Self::default());
+        }
+
+        let mut this = Self::default();
+
+        fn assert_modifiers(assertion: bool) -> Result<(), ParseKeyboardShortcutError> {
+            if assertion { Ok(()) } else { Err(ParseKeyboardShortcutError::InvalidModifiers) }
+        }
+
+        let mut match_part = |this: &mut KeyboardShortcut, part| {
+            match part {
+                "Control" => {
+                    assert_modifiers(!this.modifiers.control)?;
+                    this.modifiers.control = true;
+                }
+                "Alt" => {
+                    assert_modifiers(!this.modifiers.alt && !this.ignore_alt)?;
+                    this.modifiers.alt = true;
+                }
+                "IgnoreAlt" => {
+                    assert_modifiers(!this.modifiers.alt && !this.ignore_alt)?;
+                    this.ignore_alt = true;
+                }
+                "Shift" => {
+                    assert_modifiers(!this.modifiers.shift && !this.ignore_shift)?;
+                    this.modifiers.shift = true;
+                }
+                "IgnoreShift" => {
+                    assert_modifiers(!this.modifiers.shift && !this.ignore_shift)?;
+                    this.ignore_shift = true
+                }
+                "Meta" => {
+                    assert_modifiers(!this.modifiers.meta)?;
+                    this.modifiers.meta = true;
+                }
+                _ => {
+                    if !this.key.is_empty() {
+                        return Err(ParseKeyboardShortcutError::InvalidFormat);
+                    }
+                    // lookup key name
+                    let (keycode, shift_behavior) =
+                        i_slint_common::key_codes::lookup_key_shift_behavior(part)
+                            .ok_or(ParseKeyboardShortcutError::InvalidKey)?;
+                    use i_slint_common::key_codes::ShiftBehavior;
+                    match shift_behavior {
+                        ShiftBehavior::LocalizedShiftable { shifted_hint: _ } => {
+                            assert_modifiers(!this.ignore_shift && !this.modifiers.shift)?;
+                            this.ignore_shift = true;
+                        }
+                        // Unshiftable keys ignore the shift state in their key_code
+                        // No special action needed
+                        ShiftBehavior::Unshiftable => {}
+                    }
+                    this.key = keycode.into();
+                }
+            }
+            Ok(())
+        };
+
+        loop {
+            input = input.trim();
+            if input.starts_with('"') {
+                // basic string-literal lexxing
+                input = &input[1..];
+                // TODO: Support for quote character (e.g. """ )
+                let Some((literal, rest)) = input.split_once('"') else {
+                    return Err(ParseKeyboardShortcutError::InvalidFormat);
+                };
+
+                if !this.key.is_empty() {
+                    return Err(ParseKeyboardShortcutError::InvalidFormat);
+                }
+                let lowercase = literal.to_lowercase();
+                if lowercase != literal {
+                    return Err(ParseKeyboardShortcutError::InvalidFormat);
+                }
+                this.key = literal.into();
+
+                input = rest;
+            }
+
+            if let Some((part, rest)) = input.split_once('+') {
+                match_part(&mut this, part)?;
+                input = rest;
+            } else {
+                match_part(&mut this, input)?;
+                break;
+            }
+        }
+
+        if this.key.is_empty() {
+            return Err(ParseKeyboardShortcutError::InvalidFormat);
+        }
+
+        Ok(this)
+    }
+}
+
 impl KeyboardShortcut {
     /// Check whether a `KeyboardShortcut` can be triggered by the given `KeyEvent`
     pub fn matches(&self, key_event: &KeyEvent) -> bool {
@@ -557,7 +670,8 @@ impl Display for KeyboardShortcut {
 }
 
 impl core::fmt::Debug for KeyboardShortcut {
-    /// Formats the keyboard shortcut so that the output would be accepted by the @keys macro in Slint.
+    /// Formats the keyboard shortcut so that the output would be accepted by the FromStr
+    /// implementation.
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         // Make sure to keep this in sync with the implemenation in compiler/langtype.rs
         if self.key.is_empty() {
@@ -575,19 +689,7 @@ impl core::fmt::Debug for KeyboardShortcut {
                 .then_some("IgnoreShift+")
                 .or(self.modifiers.shift.then_some("Shift+"))
                 .unwrap_or_default();
-            let keycode: SharedString = self
-                .key
-                .chars()
-                .flat_map(|character| {
-                    let mut escaped = alloc::vec![];
-                    if character.is_control() {
-                        escaped.extend(character.escape_unicode());
-                    } else {
-                        escaped.push(character);
-                    }
-                    escaped
-                })
-                .collect();
+            let keycode = &self.key;
             write!(f, "{meta}{ctrl}{alt}{shift}\"{keycode}\"")
         }
     }
@@ -1326,126 +1428,56 @@ impl TextCursorBlinker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::format;
     extern crate alloc;
 
     #[test]
-    fn test_to_string() {
+    fn keyboard_shortcut_string_conversion() {
         let test_cases = [
-            (
-                "a",
-                KeyboardModifiers { alt: false, control: true, shift: false, meta: false },
-                false,
-                false,
-                "⌘A",
-                "Ctrl+A",
-                "Ctrl+A",
-            ),
-            (
-                "a",
-                KeyboardModifiers { alt: true, control: true, shift: true, meta: true },
-                false,
-                false,
-                "⌃⌥⇧⌘A",
-                "Win+Ctrl+Alt+Shift+A",
-                "Super+Ctrl+Alt+Shift+A",
-            ),
-            (
-                "\u{001b}",
-                KeyboardModifiers { alt: false, control: true, shift: true, meta: false },
-                false,
-                false,
-                "⇧⌘Escape",
-                "Ctrl+Shift+Escape",
-                "Ctrl+Shift+Escape",
-            ),
-            (
-                "+",
-                KeyboardModifiers { alt: false, control: true, shift: false, meta: false },
-                true,
-                false,
-                "⌘+",
-                "Ctrl++",
-                "Ctrl++",
-            ),
-            (
-                "a",
-                KeyboardModifiers { alt: true, control: true, shift: false, meta: false },
-                false,
-                true,
-                "⌘A",
-                "Ctrl+A",
-                "Ctrl+A",
-            ),
-            (
-                "",
-                KeyboardModifiers { alt: false, control: true, shift: false, meta: false },
-                false,
-                false,
-                "",
-                "",
-                "",
-            ),
-            (
-                "\u{000a}",
-                KeyboardModifiers { alt: false, control: false, shift: false, meta: false },
-                false,
-                false,
-                "Return",
-                "Return",
-                "Return",
-            ),
-            (
-                "\u{0009}",
-                KeyboardModifiers { alt: false, control: false, shift: false, meta: false },
-                false,
-                false,
-                "Tab",
-                "Tab",
-                "Tab",
-            ),
-            (
-                "\u{0020}",
-                KeyboardModifiers { alt: false, control: false, shift: false, meta: false },
-                false,
-                false,
-                "Space",
-                "Space",
-                "Space",
-            ),
-            (
-                "\u{0008}",
-                KeyboardModifiers { alt: false, control: false, shift: false, meta: false },
-                false,
-                false,
-                "Backspace",
-                "Backspace",
-                "Backspace",
-            ),
+            // Named-key form
+            ("Control+A", "⌘A", "Ctrl+A", "Ctrl+A"),
+            ("Control+Alt+Shift+Meta+A", "⌃⌥⇧⌘A", "Win+Ctrl+Alt+Shift+A", "Super+Ctrl+Alt+Shift+A"),
+            ("Control+Shift+Escape", "⇧⌘Escape", "Ctrl+Shift+Escape", "Ctrl+Shift+Escape"),
+            ("Control+Plus", "⌘+", "Ctrl++", "Ctrl++"),
+            ("Return", "Return", "Return", "Return"),
+            ("Tab", "Tab", "Tab", "Tab"),
+            ("Space", "Space", "Space", "Space"),
+            ("Backspace", "Backspace", "Backspace", "Backspace"),
+            // String-literal form (special keys by unicode)
+            ("\"\u{001b}\"", "Escape", "Escape", "Escape"),
+            ("\"\u{000a}\"", "Return", "Return", "Return"),
+            ("\"\u{0009}\"", "Tab", "Tab", "Tab"),
+            ("\"\u{0020}\"", "Space", "Space", "Space"),
+            ("\"\u{0008}\"", "Backspace", "Backspace", "Backspace"),
         ];
 
-        for (
-            key,
-            modifiers,
-            ignore_shift,
-            ignore_alt,
-            _expected_macos,
-            _expected_windows,
-            _expected_linux,
-        ) in test_cases
-        {
-            let shortcut = make_keyboard_shortcut(key.into(), modifiers, ignore_shift, ignore_alt);
+        for (shortcut_str, _expected_macos, _expected_windows, _expected_linux) in test_cases {
+            let shortcut: KeyboardShortcut = shortcut_str.parse().unwrap();
 
             use crate::alloc::string::ToString;
             let result = shortcut.to_string();
 
             #[cfg(target_os = "macos")]
-            assert_eq!(result.as_str(), _expected_macos, "Failed for key: {:?}", key);
+            assert_eq!(result.as_str(), _expected_macos, "Failed for: {:?}", shortcut_str);
 
             #[cfg(target_os = "windows")]
-            assert_eq!(result.as_str(), _expected_windows, "Failed for key: {:?}", key);
+            assert_eq!(result.as_str(), _expected_windows, "Failed for: {:?}", shortcut_str);
 
             #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-            assert_eq!(result.as_str(), _expected_linux, "Failed for key: {:?}", key);
+            assert_eq!(result.as_str(), _expected_linux, "Failed for: {:?}", shortcut_str);
+
+            // round-trip test parse and Debug should be consistent
+            let debug_str = format!("{shortcut:?}");
+            let roundtripped = debug_str
+                .parse::<KeyboardShortcut>()
+                .expect(&format!("Failed to parse `{debug_str}`"));
+            assert_eq!(roundtripped, shortcut, "Round-trip failed for: {}", shortcut);
         }
+    }
+
+    #[test]
+    fn keyboard_shortcut_invalid_str() {
+        let invalid_shortcuts =
+            ["", "Control", "Shift+", "+A", "Control++A", "Control+UnknownKey", "\""];
     }
 }

@@ -969,6 +969,8 @@ impl Expression {
     }
 
     pub fn from_at_keys_node(node: syntax_nodes::AtKeys, ctx: &mut LookupCtx) -> Self {
+        use i_slint_common::key_codes::{self, ShiftBehavior};
+
         let mut shortcut = langtype::KeyboardShortcut::default();
 
         let mut key_code: Option<(SmolStr, ShiftBehavior, NodeOrToken)> = None;
@@ -986,7 +988,9 @@ impl Expression {
                 "IgnoreShift" => shortcut.ignore_shift = true,
                 "IgnoreAlt" => shortcut.ignore_alt = true,
                 key_name => {
-                    if let Some((key, shiftbehavior)) = lookup_key(key_name) {
+                    if let Some((key, shiftbehavior)) =
+                        key_codes::lookup_key_shift_behavior(key_name)
+                    {
                         key_code = Some((
                             SmolStr::from_iter(core::iter::once(key)),
                             shiftbehavior,
@@ -1586,52 +1590,6 @@ impl Expression {
             }
         })
     }
-}
-
-/// Shift Behavior relevant for the @keys macro
-#[derive(Clone, Debug)]
-enum ShiftBehavior {
-    // Keys that change their key code when Shift is pressed, but the shifted value is layout-dependent
-    LocalizedShiftable { shifted_hint: &'static str },
-    // Unshiftable keys have the same key code regardless of the shift state
-    //
-    // (This also currently applies to the letter keys, as we match everything with lowercase)
-    Unshiftable,
-}
-
-/// Look up the given key in the Keys namespace, including its shift behavior
-fn lookup_key(keycode: &str) -> Option<(char, ShiftBehavior)> {
-    macro_rules! key_shift_behavior {
-        ($keycode:literal # $ident:ident # $shifted:ident) => {
-            (
-                stringify!($ident),
-                (
-                    $keycode,
-                    ShiftBehavior::LocalizedShiftable { shifted_hint: stringify!($shifted) },
-                ),
-            )
-        };
-        ($keycode:literal # $ident:ident # ) => {
-            (stringify!($ident), ($keycode, ShiftBehavior::Unshiftable))
-        };
-    }
-    macro_rules! generate_key_map {
-        [ $($char:literal # $name:ident # $($shifted_char:literal)?$($shifted_ident:ident)? $(=> $($qt:ident)|* # $($winit:ident $(($_pos:ident))?)|* # $($_xkb:ident)|*)?;)* ] => {
-            {
-                [
-                    $(
-                        key_shift_behavior!($char # $name # $($shifted_char)?$($shifted_ident)?)
-                    ),*
-                ]
-            }
-        }
-    }
-    thread_local! {
-        pub static KEY_MAP: HashMap<&'static str, (char, ShiftBehavior)> =
-            for_each_keys!(generate_key_map).into_iter().collect();
-    }
-
-    KEY_MAP.with(|map| map.get(keycode).cloned())
 }
 
 /// Return the type that merge two times when they are used in two branch of a condition

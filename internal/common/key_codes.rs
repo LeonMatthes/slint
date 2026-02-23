@@ -29,7 +29,7 @@
 #[macro_export]
 macro_rules! for_each_keys {
     ($macro:ident) => {
-        $macro![
+        $macro! {
 '\u{0008}'  # Backspace   # => Qt_Key_Key_Backspace    # Backspace    # BackSpace  ;
 '\u{0009}'  # Tab         # => Qt_Key_Key_Tab          # Tab          # Tab        ;
 '\u{000a}'  # Return      # => Qt_Key_Key_Enter|Qt_Key_Key_Return # Enter # Return;
@@ -202,6 +202,50 @@ macro_rules! for_each_keys {
 ']' # CloseBracket      # CloseCurlyBracket;
 '\'' # Quote            # DoubleQuote;
 
-];
-    };
+}
+        };
+}
+
+#[derive(Clone)]
+pub enum ShiftBehavior {
+    // Keys that change their key code when Shift is pressed, but the shifted value is layout-dependent
+    LocalizedShiftable { shifted_hint: &'static str },
+    // Unshiftable keys have the same key code regardless of the shift state
+    //
+    // (This also currently applies to the letter keys, as we match everything with lowercase)
+    Unshiftable,
+}
+
+/// Look up the given key in the Keys namespace, including its shift behavior
+pub fn lookup_key_shift_behavior(keycode: &str) -> Option<(char, ShiftBehavior)> {
+    macro_rules! key_shift_behavior {
+        ($keycode:literal # $ident:ident # $shifted:ident) => {
+            (
+                stringify!($ident),
+                (
+                    $keycode,
+                    ShiftBehavior::LocalizedShiftable { shifted_hint: stringify!($shifted) },
+                ),
+            )
+        };
+        ($keycode:literal # $ident:ident # ) => {
+            (stringify!($ident), ($keycode, ShiftBehavior::Unshiftable))
+        };
+    }
+    macro_rules! generate_key_map {
+        [ $($char:literal # $name:ident # $($shifted_char:literal)?$($shifted_ident:ident)? $(=> $($qt:ident)|* # $($winit:ident $(($_pos:ident))?)|* # $($_xkb:ident)|*)?;)* ] => {
+            {
+                [
+                    $(
+                        key_shift_behavior!($char # $name # $($shifted_char)?$($shifted_ident)?)
+                    ),*
+                ]
+            }
+        }
+    }
+    // Make this a plain array instead of a thread_local HashMap so that it can be used in `core`
+    // which may not have access to std.
+    const KEY_MAP: [(&str, (char, ShiftBehavior)); 123] = for_each_keys!(generate_key_map);
+
+    KEY_MAP.iter().find_map(|(key, value)| (*key == keycode).then(|| (*value).clone()))
 }
