@@ -744,6 +744,25 @@ impl WinitWindowAdapter {
         false
     }
 
+    #[cfg(muda)]
+    /// See
+    /// https://docs.rs/muda/latest/x86_64-pc-windows-msvc/muda/struct.Menu.html#method.init_for_hwnd
+    /// for details
+    ///
+    /// Returns whether the event was processed by the menubar
+    pub unsafe fn process_win32_msg(&self, msg: *const c_void) -> bool {
+        let window = self.winit_window_or_none.borrow();
+        match &*window {
+            WinitWindowOrNone::HasWindow { muda, .. } => {
+                let muda = muda.borrow();
+                muda.as_ref()
+                    .map(|menu_bar| unsafe { menu_bar.process_win32_msg(msg) })
+                    .unwrap_or_default()
+            }
+            WinitWindowOrNone::None(_) => false,
+        }
+    }
+
     // Requests for the window to be resized. Returns true if the window was resized immediately,
     // or if it will be resized later (false).
     fn resize_window(&self, size: winit::dpi::Size) -> Result<bool, PlatformError> {

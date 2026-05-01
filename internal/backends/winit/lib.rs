@@ -451,6 +451,24 @@ impl SharedBackendData {
             builder.with_any_thread(true);
         }
 
+        let active_windows =
+            Rc::<RefCell<HashMap<winit::window::WindowId, Weak<WinitWindowAdapter>>>>::default();
+
+        #[cfg(all(feature = "muda", target_os = "windows"))]
+        winit::platform::windows::EventLoopBuilderExtWindows::with_msg_hook(
+            &mut event_loop_builder,
+            {
+                let active_windows = Rc::clone(&active_windows);
+                move |msg| {
+                    let windows = active_windows.borrow();
+                    windows
+                        .values()
+                        .flat_map(Weak::upgrade)
+                        .any(|window| unsafe { window.process_win32_msg(msg) })
+                }
+            },
+        );
+
         let event_loop =
             builder.build().map_err(|e| format!("Error initializing winit event loop: {e}"))?;
 
@@ -465,9 +483,6 @@ impl SharedBackendData {
                 let is_wayland = false;
             }
         }
-
-        let active_windows =
-            Rc::<RefCell<HashMap<winit::window::WindowId, Weak<WinitWindowAdapter>>>>::default();
 
         #[cfg(target_os = "ios")]
         let keyboard_notifications =

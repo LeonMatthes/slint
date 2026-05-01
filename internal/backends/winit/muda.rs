@@ -306,6 +306,21 @@ impl MudaAdapter {
         }
     }
 
+    #[cfg(target_os = "window")]
+    /// See
+    /// https://docs.rs/muda/latest/x86_64-pc-windows-msvc/muda/struct.Menu.html#method.init_for_hwnd
+    /// for details
+    ///
+    /// Returns whether the event was processed by the menubar
+    pub unsafe fn process_win32_msg(msg: *const c_void) -> bool {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MSG, TranslateAcceleratorW};
+        let msg = msg as *const MSG;
+        unsafe {
+            let translated = TranslateAcceleratorW((*msg).hwnd, menu_bar.haccel() as _, msg);
+        }
+        translated == 1
+    }
+
     #[cfg(target_os = "macos")]
     pub fn setup_default_menu_bar() -> Result<Self, i_slint_core::api::PlatformError> {
         let menu_bar = muda::Menu::new();
