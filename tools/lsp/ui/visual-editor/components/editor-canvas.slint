@@ -103,6 +103,8 @@ export component EditorCanvas inherits Rectangle {
     private property <bool> selection-drag-active: false;
     private property <Point> selection-drag-position;
     private property <Size> selection-drag-size;
+    private property <bool> selection-rotation-active: false;
+    private property <angle> selection-rotation;
 
     callback selected(CanvasSelectionKind);
     callback real-element-selected();
@@ -253,7 +255,7 @@ export component EditorCanvas inherits Rectangle {
                 : s.y + EditorMetrics.phone-outer-padding;
             width: root.selection-drag-active && primary ? root.selection-drag-size.width : s.width;
             height: root.selection-drag-active && primary ? root.selection-drag-size.height : s.height;
-            rotation: s.angle;
+            rotation: root.selection-rotation-active && primary ? root.selection-rotation : s.angle;
             active: true;
             // Only allow resize for elements that have geometry outside a layout,
             // and only when the element is not rotated (axis-aligned edits only).
@@ -283,16 +285,28 @@ export component EditorCanvas inherits Rectangle {
                     s.height,
                 );
             }
+            rotated-to(angle) => {
+                root.selection-rotation-active = true;
+                root.selection-rotation = angle;
+                Api.override-selected-element-rotation(angle);
+            }
+
             interaction-ended => {
-                // Convert from phone (frame-parent) space back to content space
-                // by subtracting the 1px phone-outer-padding, then commit once.
-                Api.selected-element-resize(
-                    root.selection-drag-position.x - EditorMetrics.phone-outer-padding,
-                    root.selection-drag-position.y - EditorMetrics.phone-outer-padding,
-                    root.selection-drag-size.width,
-                    root.selection-drag-size.height,
-                );
-                root.selection-drag-active = false;
+                if selection-drag-active {
+                    // Convert from phone (frame-parent) space back to content space
+                    // by subtracting the 1px phone-outer-padding, then commit once.
+                    Api.selected-element-resize(
+                        root.selection-drag-position.x - EditorMetrics.phone-outer-padding,
+                        root.selection-drag-position.y - EditorMetrics.phone-outer-padding,
+                        root.selection-drag-size.width,
+                        root.selection-drag-size.height,
+                        );
+                    root.selection-drag-active = false;
+                }
+                if root.selection-rotation-active {
+                    // Api.selected-element-rotate(root.selection-rotation);
+                    root.selection-rotation-active = false;
+                }
             }
         }
 

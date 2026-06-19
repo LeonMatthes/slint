@@ -290,6 +290,7 @@ pub fn create_ui(
     api.on_selected_element_move(super::move_selected_element);
     api.on_selected_element_delete(super::delete_selected_element);
     api.on_override_selected_element_geometry(super::override_selected_element_geometry);
+    api.on_override_selected_element_rotation(super::override_selected_element_rotation);
 
     api.on_test_code_binding(super::test_code_binding);
     api.on_set_code_binding(super::set_code_binding);

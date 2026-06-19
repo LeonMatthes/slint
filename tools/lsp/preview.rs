@@ -1091,6 +1091,45 @@ fn resize_selected_element(x: f32, y: f32, width: f32, height: f32) {
 
     send_workspace_edit(label, edit, true);
 }
+
+fn override_selected_element_rotation(angle: f32) {
+    let Some(element_selection) = &selected_element() else { return };
+    let Some(element_node) = element_selection.as_element_node() else { return };
+    override_selected_element_rotation_impl(&element_node, element_selection.instance_index, angle);
+}
+
+fn override_selected_element_rotation_impl(
+    element_node: &ElementRcNode,
+    instance_index: usize,
+    angle: f32,
+) {
+    tracing::trace!("Setting rotation preview angle: {angle}");
+
+    let Some(component_instance) = component_instance() else { return };
+    let element_hash = element_node
+        .element
+        .borrow()
+        .debug
+        .get(element_node.debug_index)
+        .map(|d| d.element_hash)
+        .unwrap_or(0);
+
+    PREVIEW_STATE.with_borrow(|preview_state| {
+        let m = (*preview_state.debug_hook_overrides).borrow();
+        let property_name = "transform-rotation";
+        let id = i_slint_compiler::passes::property_id(element_hash, &SmolStr::from(property_name));
+        if let Some(rotation_property) = m.get(&id) {
+            (**rotation_property).set(Some(slint_interpreter::Value::Number(angle as f64)));
+        } else {
+            tracing::debug!(
+                "Element does not have a {property_name} debug hook, cannot override rotation"
+            );
+        }
+    });
+
+    component_instance.window().request_redraw();
+}
+
 fn override_selected_element_geometry(x: f32, y: f32, width: f32, height: f32) {
     let Some(element_selection) = &selected_element() else { return };
     let Some(element_node) = element_selection.as_element_node() else { return };

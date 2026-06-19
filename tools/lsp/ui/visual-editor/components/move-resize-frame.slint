@@ -329,6 +329,7 @@ export component MoveResizeFrame inherits Rectangle {
                             root.rotation-tooltip-position = root.local-point-to-parent(local-point);
                             root.rotation-tooltip-value = root.rotation;
                         } else {
+                            root.interaction-ended();
                             root.rotating = false;
                             root.rotation-tooltip-visible = false;
                         }
