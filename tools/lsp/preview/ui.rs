@@ -286,6 +286,7 @@ pub fn create_ui(
         },
     );
     api.on_selected_element_resize(super::resize_selected_element);
+    api.on_selected_element_rotate(super::rotate_selected_element);
     api.on_selected_element_can_move_to(super::can_move_selected_element);
     api.on_selected_element_move(super::move_selected_element);
     api.on_selected_element_delete(super::delete_selected_element);

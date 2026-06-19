@@ -1113,21 +1113,120 @@ fn override_selected_element_rotation_impl(
         .get(element_node.debug_index)
         .map(|d| d.element_hash)
         .unwrap_or(0);
+    if element_hash == 0 {
+        tracing::debug!("Element does not have a hash, cannot override rotation");
+        return;
+    }
+
+    // `rotation-angle`/`transform-rotation` is relative to the element's parent, so subtract the
+    // parent's absolute rotation. Like `parent_origin` for the geometry override, the parent's
+    // rotation rides along on the selected instance's geometry, so we don't have to guess which
+    // parent instance the element belongs to.
+    let Some(geometry) = element_node.geometries(&component_instance).get(instance_index).cloned()
+    else {
+        tracing::debug!("Selected element does not have geometry, refusing to override rotation");
+        return;
+    };
+
+    // Round to match the value written on release by rotate_selected_element_impl.
+    let new_rotation = (angle - geometry.parent_rotation).round() as f64;
+    let current_rotation = (geometry.angle - geometry.parent_rotation).round() as f64;
+    if new_rotation == current_rotation {
+        return;
+    }
 
     PREVIEW_STATE.with_borrow(|preview_state| {
         let m = (*preview_state.debug_hook_overrides).borrow();
-        let property_name = "transform-rotation";
-        let id = i_slint_compiler::passes::property_id(element_hash, &SmolStr::from(property_name));
-        if let Some(rotation_property) = m.get(&id) {
-            (**rotation_property).set(Some(slint_interpreter::Value::Number(angle as f64)));
-        } else {
+        let id = i_slint_compiler::passes::property_id(
+            element_hash,
+            &SmolStr::from("transform-rotation"),
+        );
+        let Some(rotation_property) = m.get(&id) else {
             tracing::debug!(
-                "Element does not have a {property_name} debug hook, cannot override rotation"
+                "Element does not have a transform-rotation debug hook, cannot override rotation"
             );
-        }
+            return;
+        };
+        (**rotation_property).set(Some(slint_interpreter::Value::Number(new_rotation)));
     });
 
     component_instance.window().request_redraw();
+}
+
+fn rotate_selected_element(angle: f32) {
+    let Some(element_selection) = &selected_element() else {
+        return;
+    };
+    let Some(element_node) = element_selection.as_element_node() else {
+        return;
+    };
+
+    let Some((edit, label)) =
+        rotate_selected_element_impl(&element_node, element_selection.instance_index, angle)
+    else {
+        return;
+    };
+
+    send_workspace_edit(label, edit, true);
+}
+
+fn rotate_selected_element_impl(
+    element_node: &ElementRcNode,
+    instance_index: usize,
+    angle: f32,
+) -> Option<(lsp_types::WorkspaceEdit, String)> {
+    // apply as override, then commit.
+    override_selected_element_rotation_impl(element_node, instance_index, angle);
+
+    let element_hash = element_node
+        .element
+        .borrow()
+        .debug
+        .get(element_node.debug_index)
+        .map(|d| d.element_hash)
+        .unwrap_or(0);
+    if element_hash == 0 {
+        tracing::debug!("Element does not have a hash, cannot rotate");
+        return None;
+    }
+
+    let (path, offset) = element_node.path_and_offset();
+
+    // Commit the rotation override permanently as the user-facing `rotation-angle` property
+    // (a two-way alias of the hooked `transform-rotation`).
+    let rotation_change = PREVIEW_STATE.with_borrow(|preview_state| {
+        let overrides = (*preview_state.debug_hook_overrides).borrow();
+        let id = i_slint_compiler::passes::property_id(
+            element_hash,
+            &SmolStr::from("transform-rotation"),
+        );
+        overrides
+            .get(&id)
+            .and_then(|rotation_override| rotation_override.as_ref().get())
+            .and_then(|value| {
+                if let slint_interpreter::Value::Number(value) = value && value.is_finite() {
+                    Some(value)
+                } else {
+                    tracing::debug!(
+                        "transform-rotation override is not a finite number, cannot rotate"
+                    );
+                    None
+                }
+            })
+            .map(|value| common::PropertyChange::new("rotation-angle", format!("{value}deg")))
+    })?;
+
+    let url = Url::from_file_path(&path).ok()?;
+    let document_cache = document_cache()?;
+
+    let version = document_cache.document_version(&url);
+
+    properties::update_element_properties(
+        &document_cache,
+        common::VersionedPosition::new(VersionedUrl::new(url, version), offset),
+        vec![rotation_change],
+    )
+    .map(|edit| (edit, "Rotating element".to_owned()))
 }
 
 fn override_selected_element_geometry(x: f32, y: f32, width: f32, height: f32) {

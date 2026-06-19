@@ -40,6 +40,12 @@ pub struct HighlightedRect {
     /// instance's own ancestors, so it stays correct even if the element is positioned outside
     /// of (or with a negative offset relative to) its parent.
     pub parent_origin: LogicalPoint,
+    /// Absolute rotation (in degrees) of this instance's parent coordinate system.
+    ///
+    /// `angle - parent_rotation` yields the element's own rotation relative to its parent, which
+    /// matches the `rotation-angle`/`transform-rotation` property written to the source. It is
+    /// computed from the parent's transform chain (which excludes this element's own rotation).
+    pub parent_rotation: f32,
 }
 impl HighlightedRect {
     /// return true if the point is inside the (potentially rotated) rectangle
@@ -181,6 +187,19 @@ fn fill_highlight_data(
             // `map_to_item_tree` does not add the item's own x/y, so mapping the zero point
             // yields the absolute origin of this instance's parent coordinate system.
             let parent_origin = item_rc.map_to_item_tree(LogicalPoint::default(), &root_vrc);
+            // The parent's absolute rotation: map a unit x-vector of the parent's frame. Mapping
+            // from the parent item applies its ancestors' transforms but not the element's own
+            // rotation (which is applied by an injected `Transform` parent), so this is the frame
+            // the element's `rotation-angle` is relative to.
+            let parent_rotation = item_rc
+                .parent_item(i_slint_core::item_tree::ParentItemTraversalMode::StopAtPopups)
+                .map(|parent| {
+                    let p0 = parent.map_to_item_tree(LogicalPoint::default(), &root_vrc);
+                    let p1 = parent.map_to_item_tree(LogicalPoint::new(1.0, 0.0), &root_vrc);
+                    let d = p1 - p0;
+                    d.y.atan2(d.x).to_degrees()
+                })
+                .unwrap_or(0.0);
             let top_right = item_rc.map_to_item_tree(
                 geometry.origin + euclid::vec2(geometry.size.width, 0.),
                 &root_vrc,
@@ -202,6 +221,7 @@ fn fill_highlight_data(
                 },
                 angle: angle_rad.to_degrees(),
                 parent_origin,
+                parent_rotation,
             });
         }
     }
