@@ -5,6 +5,7 @@ import { InspectorTokens } from "tokens.slint";
 
 export component InspectorEffectDial inherits Rectangle {
     in property <angle> value: 90deg;
+    callback changed(angle) -> bool;
     callback accepted(angle) -> bool;
 
     property <bool> dragging: false;
@@ -41,6 +42,7 @@ export component InspectorEffectDial inherits Rectangle {
 
     function update-drag(x: length, y: length) {
         root.drag-value = root.angle-from-pointer(x, y);
+        root.changed(root.drag-value);
     }
 
     Rectangle {
