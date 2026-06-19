@@ -2525,6 +2525,58 @@ export component Win inherits Window {
     assert!((with[0].2 - 300.0).abs() < 0.5 && (with[0].3 - 200.0).abs() < 0.5);
 }
 
+// With debug_hooks enabled every element is wrapped in an injected `Transform`, which steals the
+// element's geometry. `element_positions` must still report a `parent_origin` from which the
+// element's own `x`/`y` can be recovered (`rect.origin - parent_origin == x/y`), otherwise the
+// editor commits wrong coordinates when repositioning.
+#[cfg(all(test, feature = "internal", feature = "internal-highlight"))]
+#[test]
+fn test_debug_hooks_parent_origin() {
+    i_slint_backend_testing::init_no_event_loop();
+
+    let code = r#"
+export component Win inherits Window {
+    width: 300px;
+    height: 200px;
+    rect := Rectangle {
+        x: 30px;
+        y: 40px;
+        width: 50px;
+        height: 60px;
+    }
+}"#;
+    let path = PathBuf::from("/tmp/debug_hook_parent_origin.slint");
+
+    let mut compiler = Compiler::default();
+    compiler.set_style("fluent".into());
+    compiler.compiler_configuration(i_slint_core::InternalToken).debug_hooks =
+        Some(std::hash::RandomState::new());
+    let r = spin_on::spin_on(compiler.build_from_source(code.to_string(), path.clone()));
+    assert!(!r.has_errors(), "{:?}", r.diagnostics);
+    let instance = r.components().next().unwrap().create().unwrap();
+
+    let (elem, _) = instance
+        .element_node_at_source_code_position(&path, code.find("Rectangle").unwrap() as u32)
+        .first()
+        .cloned()
+        .expect("element");
+    let g = *instance.element_positions(&elem).first().expect("geometry");
+
+    // The element's source-relative position is recoverable despite the injected Transform wrapper.
+    assert!(
+        (g.rect.origin.x - g.parent_origin.x - 30.0).abs() < 0.5,
+        "x: rect.origin {} - parent_origin {} should be 30",
+        g.rect.origin.x,
+        g.parent_origin.x
+    );
+    assert!(
+        (g.rect.origin.y - g.parent_origin.y - 40.0).abs() < 0.5,
+        "y: rect.origin {} - parent_origin {} should be 40",
+        g.rect.origin.y,
+        g.parent_origin.y
+    );
+}
+
 #[cfg(feature = "ffi")]
 #[doc(hidden)]
 #[allow(missing_docs)]

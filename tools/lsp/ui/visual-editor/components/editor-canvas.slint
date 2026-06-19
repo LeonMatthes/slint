@@ -257,9 +257,10 @@ export component EditorCanvas inherits Rectangle {
             height: root.selection-drag-active && primary ? root.selection-drag-size.height : s.height;
             rotation: root.selection-rotation-active && primary ? root.selection-rotation : s.angle;
             active: true;
-            // Only allow resize for elements that have geometry outside a layout,
-            // and only when the element is not rotated (axis-aligned edits only).
+            // Only allow move/resize for elements that have geometry outside a layout, and only
+            // when the element is not rotated (we don't support rotating + repositioning at once).
             resizable: primary && Api.selection.is-resizable && s.angle == 0deg;
+            moveable: primary && Api.selection.is-moveable && s.angle == 0deg;
 
             resized-to(corner, position, size) => {
                 root.selection-drag-active = true;

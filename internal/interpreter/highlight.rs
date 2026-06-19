@@ -183,10 +183,29 @@ fn fill_highlight_data(
             if geometry.size.is_empty() {
                 return;
             }
+            // When the element's geometry has been moved onto an injected wrapper parent (e.g. the
+            // `Transform` element that carries `transform-rotation`),
+            // `adjust_geometry_for_injected_parent` redirects the element's x/y to that wrapper and
+            // lays the element out at (0,0) inside it. In that case measure the parent frame from
+            // the wrapper, so `rect.origin - parent_origin` still yields the element's own x/y
+            // instead of collapsing to zero.
+            let geometry_stolen = element
+                .borrow()
+                .geometry_props
+                .as_ref()
+                .is_some_and(|g| !Rc::ptr_eq(&g.x.element(), element));
+            let parent_anchor = if geometry_stolen {
+                item_rc
+                    .parent_item(i_slint_core::item_tree::ParentItemTraversalMode::StopAtPopups)
+                    .unwrap_or_else(|| item_rc.clone())
+            } else {
+                item_rc.clone()
+            };
+
             let origin = item_rc.map_to_item_tree(geometry.origin, &root_vrc);
-            // `map_to_item_tree` does not add the item's own x/y, so mapping the zero point
-            // yields the absolute origin of this instance's parent coordinate system.
-            let parent_origin = item_rc.map_to_item_tree(LogicalPoint::default(), &root_vrc);
+            // `map_to_item_tree` does not add the item's own x/y, so mapping the zero point yields
+            // the absolute origin of the (possibly wrapper-anchored) parent coordinate system.
+            let parent_origin = parent_anchor.map_to_item_tree(LogicalPoint::default(), &root_vrc);
             // The parent's absolute rotation: map a unit x-vector of the parent's frame. Mapping
             // from the parent item applies its ancestors' transforms but not the element's own
             // rotation (which is applied by an injected `Transform` parent), so this is the frame

@@ -1280,6 +1280,12 @@ fn override_selected_element_geometry_impl(
         tracing::debug!("Selected element does not have geometry, refusing to override");
         return;
     };
+    // We don't support repositioning a rotated element for now: the parent-relative geometry math
+    // assumes an axis-aligned element. Leave rotated elements to the rotation handle only.
+    if (geometry.angle - geometry.parent_rotation).round() != 0.0 {
+        tracing::debug!("Refusing to override geometry of a rotated element");
+        return;
+    }
     let parent_position = geometry.parent_origin;
     let current_position = geometry.rect.origin;
 
