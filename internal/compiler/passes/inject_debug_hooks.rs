@@ -210,10 +210,18 @@ mod tests {
     }
 
     fn child(root: &ElementRc, id: &str) -> ElementRc {
-        // The unique-id pass suffixes ids (`txt` -> `txt-2`), so match name or `name-N`.
+        // The unique-id pass suffixes ids (`txt` -> `txt-2`), so match `name` or `name-<digits>`.
+        // This must NOT match injected wrappers like `txt-Transform-2` (created by
+        // lower_property_to_element), which also start with `txt-`.
+        fn matches(this_id: &str, id: &str) -> bool {
+            this_id == id
+                || this_id
+                    .strip_prefix(id)
+                    .and_then(|rest| rest.strip_prefix('-'))
+                    .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()))
+        }
         fn rec(e: &ElementRc, id: &str) -> Option<ElementRc> {
-            let this_id = e.borrow().id.clone();
-            if this_id == id || this_id.starts_with(&format!("{id}-")) {
+            if matches(&e.borrow().id, id) {
                 return Some(e.clone());
             }
             let children = e.borrow().children.clone();

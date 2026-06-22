@@ -39,6 +39,7 @@ fn create_repeater_components(component: &Rc<Component>) {
         let repeated_component = Rc::new(Component {
             root_element: Rc::new(RefCell::new(Element {
                 id: original_elem.id.clone(),
+                is_geometry_wrapper: original_elem.is_geometry_wrapper,
                 base_type: std::mem::take(&mut original_elem.base_type),
                 bindings: std::mem::take(&mut original_elem.bindings),
                 change_callbacks: std::mem::take(&mut original_elem.change_callbacks),

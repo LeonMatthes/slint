@@ -2525,10 +2525,11 @@ export component Win inherits Window {
     assert!((with[0].2 - 300.0).abs() < 0.5 && (with[0].3 - 200.0).abs() < 0.5);
 }
 
-// With debug_hooks enabled every element is wrapped in an injected `Transform`, which steals the
-// element's geometry. `element_positions` must still report a `parent_origin` from which the
-// element's own `x`/`y` can be recovered (`rect.origin - parent_origin == x/y`), otherwise the
-// editor commits wrong coordinates when repositioning.
+// With debug_hooks enabled every element is wrapped in injected geometry wrappers (`Transform`, and
+// `Opacity` etc. when those props are set), which take over the element's geometry. `element_positions`
+// must still report a `parent_origin` from which the element's own `x`/`y` can be recovered
+// (`rect.origin - parent_origin == x/y`), otherwise the editor commits wrong coordinates when
+// repositioning. This must hold through stacked wrappers and for elements nested below a non-root parent.
 #[cfg(all(test, feature = "internal", feature = "internal-highlight"))]
 #[test]
 fn test_debug_hooks_parent_origin() {
@@ -2538,11 +2539,30 @@ fn test_debug_hooks_parent_origin() {
 export component Win inherits Window {
     width: 300px;
     height: 200px;
-    rect := Rectangle {
+    plain := Rectangle {
         x: 30px;
         y: 40px;
         width: 50px;
         height: 60px;
+    }
+    faded := Rectangle {
+        opacity: 0.5;   // extra Opacity wrapper stacked inside the Transform wrapper
+        x: 70px;
+        y: 80px;
+        width: 40px;
+        height: 30px;
+    }
+    outer := Rectangle {
+        x: 10px;
+        y: 20px;
+        width: 120px;
+        height: 100px;
+        nested := Rectangle {
+            x: 5px;
+            y: 7px;
+            width: 20px;
+            height: 20px;
+        }
     }
 }"#;
     let path = PathBuf::from("/tmp/debug_hook_parent_origin.slint");
@@ -2555,26 +2575,31 @@ export component Win inherits Window {
     assert!(!r.has_errors(), "{:?}", r.diagnostics);
     let instance = r.components().next().unwrap().create().unwrap();
 
-    let (elem, _) = instance
-        .element_node_at_source_code_position(&path, code.find("Rectangle").unwrap() as u32)
-        .first()
-        .cloned()
-        .expect("element");
-    let g = *instance.element_positions(&elem).first().expect("geometry");
+    // The source-relative position (`rect.origin - parent_origin`) must equal the element's own x/y.
+    // The selection offset must fall inside the element's type-name token, so resolve the
+    // `Rectangle` token that follows each id.
+    let check = |id: &str, expected: (f32, f32)| {
+        let id_pos = code.find(id).unwrap_or_else(|| panic!("{id} not found"));
+        let off = id_pos + code[id_pos..].find("Rectangle").unwrap();
+        let (elem, _) = instance
+            .element_node_at_source_code_position(&path, off as u32)
+            .first()
+            .cloned()
+            .unwrap_or_else(|| panic!("element {id} not resolved"));
+        let g = *instance.element_positions(&elem).first().expect("geometry");
+        let (x, y) = (g.rect.origin.x - g.parent_origin.x, g.rect.origin.y - g.parent_origin.y);
+        assert!(
+            (x - expected.0).abs() < 0.5 && (y - expected.1).abs() < 0.5,
+            "{id}: relative ({x}, {y}) should be {expected:?}"
+        );
+    };
 
-    // The element's source-relative position is recoverable despite the injected Transform wrapper.
-    assert!(
-        (g.rect.origin.x - g.parent_origin.x - 30.0).abs() < 0.5,
-        "x: rect.origin {} - parent_origin {} should be 30",
-        g.rect.origin.x,
-        g.parent_origin.x
-    );
-    assert!(
-        (g.rect.origin.y - g.parent_origin.y - 40.0).abs() < 0.5,
-        "y: rect.origin {} - parent_origin {} should be 40",
-        g.rect.origin.y,
-        g.parent_origin.y
-    );
+    // Single Transform wrapper.
+    check("plain", (30.0, 40.0));
+    // Opacity + Transform stacked wrappers — must walk past both.
+    check("faded", (70.0, 80.0));
+    // Nested below a non-root parent — relative to `outer`, not the window.
+    check("nested", (5.0, 7.0));
 }
 
 #[cfg(feature = "ffi")]
