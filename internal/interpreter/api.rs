@@ -1687,6 +1687,19 @@ impl ComponentInstance {
         )
     }
 
+    /// Return the two transforms needed to map a dragged visual frame back to the element's source
+    /// geometry properties, for the given repeated instance index.
+    ///
+    /// WARNING: this is not part of the public API
+    #[cfg(feature = "internal-highlight")]
+    pub fn instance_root_to_local_transform(
+        &self,
+        element: &i_slint_compiler::object_tree::ElementRc,
+        instance_index: usize,
+    ) -> Option<crate::highlight::ElementLocalTransforms> {
+        crate::highlight::instance_root_to_local_transform(&self.inner, element, instance_index)
+    }
+
     /// Find the `element` that was defined at the text position.
     ///
     /// WARNING: this is not part of the public API
@@ -2600,6 +2613,168 @@ export component Win inherits Window {
     check("faded", (70.0, 80.0));
     // Nested below a non-root parent — relative to `outer`, not the window.
     check("nested", (5.0, 7.0));
+}
+
+// Verify that `instance_root_to_local_transform` round-trips correctly: applying the returned
+// transform to a point in root space should yield the element's source x/y. Also validates the
+// scale case where `rect.origin - parent_origin` would give the wrong value (scaled coords).
+#[cfg(all(test, feature = "internal", feature = "internal-highlight"))]
+#[test]
+fn test_instance_root_to_local_transform() {
+    i_slint_backend_testing::init_no_event_loop();
+
+    let code = r#"
+export component Win inherits Window {
+    width: 400px;
+    height: 400px;
+    plain := Rectangle {
+        x: 30px;
+        y: 40px;
+        width: 50px;
+        height: 60px;
+    }
+    scaled_parent := Rectangle {
+        x: 100px;
+        y: 100px;
+        width: 200px;
+        height: 200px;
+        transform-scale-x: 2;
+        child := Rectangle {
+            x: 10px;
+            y: 15px;
+            width: 20px;
+            height: 25px;
+        }
+    }
+}"#;
+    let path = PathBuf::from("/tmp/test_root_to_local_transform.slint");
+
+    let mut compiler = Compiler::default();
+    compiler.set_style("fluent".into());
+    compiler.compiler_configuration(i_slint_core::InternalToken).debug_hooks =
+        Some(std::hash::RandomState::new());
+    let r = spin_on::spin_on(compiler.build_from_source(code.to_string(), path.clone()));
+    assert!(!r.has_errors(), "{:?}", r.diagnostics);
+    let instance = r.components().next().unwrap().create().unwrap();
+
+    let resolve = |id: &str| -> (i_slint_compiler::object_tree::ElementRc, crate::highlight::HighlightedRect) {
+        let id_pos = code.find(id).unwrap_or_else(|| panic!("{id} not found"));
+        let off = id_pos + code[id_pos..].find("Rectangle").unwrap();
+        let (elem, _) = instance
+            .element_node_at_source_code_position(&path, off as u32)
+            .first()
+            .cloned()
+            .unwrap_or_else(|| panic!("element {id} not resolved"));
+        let g = *instance.element_positions(&elem).first().expect("geometry");
+        (elem, g)
+    };
+
+    // Plain rectangle: current source position should be (30, 40); position transform should
+    // map visual deltas 1-to-1 (no ancestor scale); size transform should preserve size.
+    {
+        let (elem, geometry) = resolve("plain");
+        let local_transforms = instance
+            .instance_root_to_local_transform(&elem, 0)
+            .expect("transforms for plain");
+        assert!(
+            (local_transforms.current_source_position.x - 30.0f32).abs() < 0.5
+                && (local_transforms.current_source_position.y - 40.0f32).abs() < 0.5,
+            "plain: current_source_position ({}, {}) should be (30, 40)",
+            local_transforms.current_source_position.x,
+            local_transforms.current_source_position.y,
+        );
+        // A visual delta of (7, 0) maps to the same (7, 0) source delta — no ancestor scale.
+        let source_position_delta: i_slint_core::lengths::LogicalVector = local_transforms
+            .position
+            .transform_vector(i_slint_core::lengths::LogicalVector::new(7.0, 0.0).cast())
+            .cast();
+        assert!(
+            (source_position_delta.x - 7.0f32).abs() < 0.5,
+            "plain: position delta ({}) should be (7)",
+            source_position_delta.x,
+        );
+        // Visual size = source size for a plain element (no scale).
+        let source_width = local_transforms
+            .size
+            .transform_vector(
+                i_slint_core::lengths::LogicalVector::new(geometry.rect.width(), 0.0).cast(),
+            )
+            .length();
+        assert!(
+            (source_width - 50.0f32).abs() < 0.5,
+            "plain: source_width ({}) should be (50)",
+            source_width,
+        );
+    }
+
+    // Child of scaled parent (transform-scale-x: 2): visual x = 100 + 10*2 = 120 but
+    // source x = 10. Old parent_origin subtraction gives 120 - 100 = 20 (wrong).
+    // The position transform should map a visual-space delta of (20, 0) back to (10, 0).
+    // The size transform should map a visual width of 40 back to source width 20.
+    {
+        let (elem, geometry) = resolve("child");
+        let local_transforms = instance
+            .instance_root_to_local_transform(&elem, 0)
+            .expect("transforms for child");
+        assert!(
+            (local_transforms.current_source_position.x - 10.0f32).abs() < 0.5
+                && (local_transforms.current_source_position.y - 15.0f32).abs() < 0.5,
+            "child: current_source_position ({}, {}) should be (10, 15)",
+            local_transforms.current_source_position.x,
+            local_transforms.current_source_position.y,
+        );
+        // A visual delta of (20, 0) under a 2× parent scale maps to a source delta of (10, 0).
+        let source_position_delta: i_slint_core::lengths::LogicalVector = local_transforms
+            .position
+            .transform_vector(i_slint_core::lengths::LogicalVector::new(20.0, 0.0).cast())
+            .cast();
+        assert!(
+            (source_position_delta.x - 10.0f32).abs() < 0.5,
+            "child: position delta ({}) for visual delta (20) should be (10)",
+            source_position_delta.x,
+        );
+        // Visual width = source_w * scale = 20 * 2 = 40; size transform should give back 20.
+        let source_width = local_transforms
+            .size
+            .transform_vector(
+                i_slint_core::lengths::LogicalVector::new(geometry.rect.width(), 0.0).cast(),
+            )
+            .length();
+        assert!(
+            (source_width - 20.0f32).abs() < 0.5,
+            "child: source_width ({}) should be (20)",
+            source_width,
+        );
+    }
+
+    // The scaled element itself (scaled_parent has transform-scale-x: 2 on itself): the
+    // current_source_position should be (100, 100) — the wrapper's position in parent space.
+    // The size transform should map the visual width (400) back to source width (200).
+    {
+        let (elem, geometry) = resolve("scaled_parent");
+        let local_transforms = instance
+            .instance_root_to_local_transform(&elem, 0)
+            .expect("transforms for scaled_parent");
+        assert!(
+            (local_transforms.current_source_position.x - 100.0f32).abs() < 0.5
+                && (local_transforms.current_source_position.y - 100.0f32).abs() < 0.5,
+            "scaled_parent: current_source_position ({}, {}) should be (100, 100)",
+            local_transforms.current_source_position.x,
+            local_transforms.current_source_position.y,
+        );
+        // Visual width = source_w * scale = 200 * 2 = 400; size transform should give back 200.
+        let source_width = local_transforms
+            .size
+            .transform_vector(
+                i_slint_core::lengths::LogicalVector::new(geometry.rect.width(), 0.0).cast(),
+            )
+            .length();
+        assert!(
+            (source_width - 200.0f32).abs() < 0.5,
+            "scaled_parent: source_width ({}) should be (200)",
+            source_width,
+        );
+    }
 }
 
 #[cfg(feature = "ffi")]

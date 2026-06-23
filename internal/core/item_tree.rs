@@ -639,6 +639,17 @@ impl ItemRc {
         self.map_to_item_tree_impl(p, |current| current.is_root_item_of(item_tree))
     }
 
+    /// The transform mapping a point in this item's parent coordinate system to the `ItemTree`'s
+    /// (root) coordinate system — the transform form of [`map_to_item_tree`](Self::map_to_item_tree)
+    /// (does not include this item's own x/y or children-transform). Accounts for every ancestor's
+    /// translation, scale and rotation. Invert with [`ItemTransform::inverse`] to map root → local.
+    pub fn map_to_item_tree_transform(
+        &self,
+        item_tree: &vtable::VRc<ItemTreeVTable>,
+    ) -> ItemTransform {
+        self.local_to_window_transform(|current| current.is_root_item_of(item_tree))
+    }
+
     /// Returns an absolute position of `p` in the `ancestor`'s coordinate system
     /// (does not add this item's x and y)
     /// Don't rely on any specific behavior if `self` isn't a descendant of `ancestor`.

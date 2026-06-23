@@ -11,6 +11,7 @@ fn set_global_log_message_handler(
 }
 
 #[test]
+#[cfg(feature = "internal")]
 fn reuse_window() {
     i_slint_backend_testing::init_no_event_loop();
     use crate::{Compiler, SharedString, Value};

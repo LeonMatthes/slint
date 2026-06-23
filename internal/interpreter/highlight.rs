@@ -7,7 +7,7 @@ use crate::dynamic_item_tree::{DynamicComponentVRc, ItemTreeBox};
 use i_slint_compiler::object_tree::{Component, Element, ElementRc};
 use i_slint_core::graphics::euclid;
 use i_slint_core::items::ItemRc;
-use i_slint_core::lengths::{LogicalPoint, LogicalRect};
+use i_slint_core::lengths::{ItemTransform, LogicalPoint, LogicalRect};
 use smol_str::SmolStr;
 use std::cell::RefCell;
 use std::path::Path;
@@ -290,6 +290,122 @@ fn find_element_node_at_source_code_position(
         },
     );
     result
+}
+
+/// The two coordinate-system transforms needed to map a dragged visual frame back to the source
+/// geometry properties (`x`/`y`/`width`/`height`) of the selected element.
+#[derive(Clone, Copy, Debug)]
+pub struct ElementLocalTransforms {
+    /// Inverse of the outermost-wrapper-to-root transform. Apply to root-space position vectors
+    /// (deltas) to get vectors in the element's parent (source) coordinate system.
+    pub position: ItemTransform,
+    /// Inverse of the inner-element-to-root transform, which includes any scale applied by an
+    /// injected Transform wrapper (`transform-scale`, etc.). Apply as a vector operation to
+    /// root-space size vectors to get source-space sizes.
+    pub size: ItemTransform,
+    /// Current source position of the element in its parent coordinate system — the live value of
+    /// the `x`/`y` properties, accounting for any debug-hook overrides already applied.
+    pub current_source_position: LogicalPoint,
+}
+
+fn collect_instance_anchors(
+    repeater_path: &[SmolStr],
+    element: &ElementRc,
+    component_instance: &ItemTreeBox,
+    root_component_instance: &ItemTreeBox,
+    out: &mut Vec<(ItemRc, ItemRc, VRc<i_slint_core::item_tree::ItemTreeVTable>)>,
+) {
+    if element.borrow().repeated.is_some() {
+        return;
+    }
+
+    if let [first, rest @ ..] = repeater_path {
+        generativity::make_guard!(guard);
+        let rep = crate::dynamic_item_tree::get_repeater_by_name(
+            component_instance.borrow_instance(),
+            first.as_str(),
+            guard,
+        );
+        for idx in rep.0.range() {
+            if let Some(child_instance) = rep.0.instance_at(idx) {
+                generativity::make_guard!(guard);
+                collect_instance_anchors(
+                    rest,
+                    element,
+                    &child_instance.unerase(guard),
+                    root_component_instance,
+                    out,
+                );
+            }
+        }
+    } else {
+        let component_vrc = VRc::into_dyn(
+            component_instance.borrow_instance().self_weak().get().unwrap().upgrade().unwrap(),
+        );
+        let root_vrc = VRc::into_dyn(
+            root_component_instance.borrow_instance().self_weak().get().unwrap().upgrade().unwrap(),
+        );
+        let element_index = element.borrow().item_index.get().copied().unwrap();
+        let item_rc = ItemRc::new(component_vrc.clone(), element_index);
+        let description = component_instance.description();
+        let item_tree = item_rc.item_tree().clone();
+        let mut outermost_wrapper = item_rc.clone();
+        let mut walk = item_rc.clone();
+        while let Some(parent) =
+            walk.parent_item(i_slint_core::item_tree::ParentItemTraversalMode::StopAtPopups)
+        {
+            if !vtable::VRc::ptr_eq(parent.item_tree(), &item_tree) {
+                break;
+            }
+            let is_wrapper = description
+                .original_elements
+                .get(parent.index() as usize)
+                .is_some_and(|element| element.borrow().is_geometry_wrapper);
+            if !is_wrapper {
+                break;
+            }
+            outermost_wrapper = parent.clone();
+            walk = parent;
+        }
+        out.push((outermost_wrapper, item_rc, root_vrc));
+    }
+}
+
+/// The two transforms needed to map a dragged visual frame back to the element's source geometry
+/// properties. `instance_index` selects among repeated instances (same order as
+/// `element_positions`). Returns `None` if the instance cannot be resolved or either forward
+/// transform is non-invertible — the caller should skip the override rather than guessing.
+pub fn instance_root_to_local_transform(
+    component_instance: &DynamicComponentVRc,
+    element: &ElementRc,
+    instance_index: usize,
+) -> Option<ElementLocalTransforms> {
+    if element.borrow().repeated.is_some() {
+        return None;
+    }
+    let element = normalize_repeated_element(element.clone());
+    let element_repeater_path = repeater_path(&element)?;
+    generativity::make_guard!(guard);
+    let component_unerased = component_instance.unerase(guard);
+    let mut anchors = Vec::new();
+    collect_instance_anchors(&element_repeater_path, &element, &component_unerased, &component_unerased, &mut anchors);
+    let (outermost_wrapper, inner_item, root_vrc) = anchors.into_iter().nth(instance_index)?;
+    // The position transform maps root-space position deltas to the element's parent (source)
+    // coordinate space. It excludes the wrapper's own x/y and children-transform (scale/rotation),
+    // so applying it to visual deltas gives the correct source-space displacement.
+    let position_transform = outermost_wrapper.map_to_item_tree_transform(&root_vrc).inverse()?;
+    // The size transform maps root-space size vectors to source-space sizes. It uses the inner
+    // item's transform, which DOES include the wrapper's children-transform (scale), so a visual
+    // width of 100px under a 0.5× scale correctly yields a source width of 200px.
+    let size_transform = inner_item.map_to_item_tree_transform(&root_vrc).inverse()?;
+    // The wrapper's geometry origin is its current x/y in parent (source) space, including any
+    // debug-hook overrides already applied via the two-way binding to the inner element.
+    let current_source_position = outermost_wrapper.geometry().origin;
+    Some(ElementLocalTransforms {
+        position: position_transform,
+        size: size_transform,
+        current_source_position,
+    })
 }
 
 fn repeater_path(elem: &ElementRc) -> Option<Vec<SmolStr>> {

@@ -16,6 +16,15 @@ pub trait ElementRcNodeExt {
     /// Find all geometries for the given `ElementRcNode`
     fn geometries(&self, component_instance: &ComponentInstance) -> Vec<HighlightedRect>;
 
+    /// Return the two transforms needed to map a dragged visual frame back to the element's source
+    /// geometry properties, for the given repeated instance index. `None` if unresolvable or
+    /// either forward transform is non-invertible.
+    fn root_to_local_transform(
+        &self,
+        component_instance: &ComponentInstance,
+        instance_index: usize,
+    ) -> Option<slint_interpreter::highlight::ElementLocalTransforms>;
+
     /// Find the first geometry of `ElementRcNode` that includes the point `x`, `y`
     fn geometry_at(
         &self,
@@ -49,6 +58,14 @@ impl ElementRcNodeExt for common::ElementRcNode {
 
     fn geometries(&self, component_instance: &ComponentInstance) -> Vec<HighlightedRect> {
         component_instance.element_positions(self.as_element())
+    }
+
+    fn root_to_local_transform(
+        &self,
+        component_instance: &ComponentInstance,
+        instance_index: usize,
+    ) -> Option<slint_interpreter::highlight::ElementLocalTransforms> {
+        component_instance.instance_root_to_local_transform(self.as_element(), instance_index)
     }
 
     fn geometry_at(

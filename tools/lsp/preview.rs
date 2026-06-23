@@ -18,7 +18,7 @@ use i_slint_compiler::parser::{TextSize, syntax_nodes};
 use i_slint_compiler::{EmbedResourcesKind, diagnostics};
 use i_slint_core::DataTransfer;
 use i_slint_core::component_factory::FactoryContext;
-use i_slint_core::lengths::{LogicalPoint, LogicalRect, LogicalSize};
+use i_slint_core::lengths::{LogicalPoint, LogicalRect, LogicalSize, LogicalVector};
 use i_slint_live_preview::protocol::{
     PreviewComponent, PreviewConfig, PreviewToLspMessage, SourceFileVersion, VersionedUrl,
 };
@@ -1271,10 +1271,6 @@ fn override_selected_element_geometry_impl(
         return;
     }
 
-    let new_position = LogicalPoint::new(x, y);
-    // The parent origin rides along on the selected instance's geometry, so we don't have to
-    // guess which parent instance contains the dragged point (which breaks once the element is
-    // dragged outside of its parent).
     let Some(geometry) = element_node.geometries(&component_instance).get(instance_index).cloned()
     else {
         tracing::debug!("Selected element does not have geometry, refusing to override");
@@ -1286,24 +1282,76 @@ fn override_selected_element_geometry_impl(
         tracing::debug!("Refusing to override geometry of a rotated element");
         return;
     }
-    let parent_position = geometry.parent_origin;
-    let current_position = geometry.rect.origin;
+    // Fetch the two transforms for this instance. Skip if unavailable (non-invertible ancestor
+    // scale or unresolvable instance — better to do nothing than guess).
+    let Some(local_transforms) =
+        element_node.root_to_local_transform(&component_instance, instance_index)
+    else {
+        tracing::debug!("Cannot compute local transforms, skipping geometry override");
+        return;
+    };
 
-    // Round to match the values written on release by resize_selected_element_impl,
-    // so the element does not jump by a sub-pixel amount when the drag is committed.
+    let current_visual_tl = geometry.rect.origin;
+    let new_visual_tl = LogicalPoint::new(x, y);
+
+    // The position transform (= inverse of wrapper-to-root) maps root-space points to the
+    // element's parent (source) coordinate space. For elements with an injected Transform wrapper
+    // (e.g. transform-scale with center origin), the visual top-left is displaced from the source
+    // position by a children-transform offset. We recover that offset from the current live state
+    // so we can correct for it — without needing to read the Transform's properties directly.
+    let current_visual_tl_in_parent: LogicalPoint =
+        local_transforms.position.transform_point(current_visual_tl.cast()).cast();
+    let children_transform_offset =
+        current_visual_tl_in_parent - local_transforms.current_source_position;
+
+    // The children-transform offset scales proportionally with source dimensions (center-origin
+    // scale: offset = source_dim * (1 − scale) / 2). When width/height change, the offset must
+    // be scaled by the same ratio so the element's visual anchor point stays fixed.
+    let visual_width_ratio =
+        if geometry.rect.width() > 0.0 { width / geometry.rect.width() } else { 1.0 };
+    let visual_height_ratio =
+        if geometry.rect.height() > 0.0 { height / geometry.rect.height() } else { 1.0 };
+
+    let new_visual_tl_in_parent: LogicalPoint =
+        local_transforms.position.transform_point(new_visual_tl.cast()).cast();
+    let new_source_x =
+        (new_visual_tl_in_parent.x - children_transform_offset.x * visual_width_ratio).round();
+    let new_source_y =
+        (new_visual_tl_in_parent.y - children_transform_offset.y * visual_height_ratio).round();
+
+    // The size transform (= inverse of inner-item-to-root) includes any scale applied by the
+    // element's own injected Transform wrapper, so a visual width of 96px under a 0.5× scale
+    // correctly yields a source width of 193px.
+    let new_source_width = local_transforms
+        .size
+        .transform_vector(LogicalVector::new(width, 0.0).cast())
+        .length()
+        .round();
+    let new_source_height = local_transforms
+        .size
+        .transform_vector(LogicalVector::new(0.0, height).cast())
+        .length()
+        .round();
+
+    // Current source values for the "changed?" comparison, derived from the live state.
+    let current_source_x = local_transforms.current_source_position.x.round();
+    let current_source_y = local_transforms.current_source_position.y.round();
+    let current_source_width = local_transforms
+        .size
+        .transform_vector(LogicalVector::new(geometry.rect.width(), 0.0).cast())
+        .length()
+        .round();
+    let current_source_height = local_transforms
+        .size
+        .transform_vector(LogicalVector::new(0.0, geometry.rect.height()).cast())
+        .length()
+        .round();
+
     let values = [
-        (
-            "x",
-            (new_position.x - parent_position.x).round() as f64,
-            (current_position.x - parent_position.x).round() as f64,
-        ),
-        (
-            "y",
-            (new_position.y - parent_position.y).round() as f64,
-            (current_position.y - parent_position.y).round() as f64,
-        ),
-        ("width", width.round() as f64, (geometry.rect.width()).round() as f64),
-        ("height", height.round() as f64, (geometry.rect.height()).round() as f64),
+        ("x", new_source_x as f64, current_source_x as f64),
+        ("y", new_source_y as f64, current_source_y as f64),
+        ("width", new_source_width as f64, current_source_width as f64),
+        ("height", new_source_height as f64, current_source_height as f64),
     ];
     let values = values
         .into_iter()
