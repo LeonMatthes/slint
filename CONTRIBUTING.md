@@ -8,7 +8,7 @@ Use 👍 reaction on issues that you consider important.
 Issues which we think are suitable for new contributors are tagged with
 https://github.com/slint-ui/slint/labels/good%20first%20issue.
 
-If you use an AI coding assistant, it reads [AGENTS.md](AGENTS.md) for build commands and
+If you use an AI coding assistant, set it up to read [AGENTS.md](AGENTS.md) for build commands and
 architecture notes specific to this repository.
 
 ## Internal documentation
@@ -34,3 +34,11 @@ you wrote the code yourself and are licensing it under MIT-0.
 For the Rust portion of the code base, the CI enforces the coding style via rustfmt.
 For the C++ portion of the code base, the CI enforces the coding style via `clang-format`.
 
+## Adding New Features
+
+If you intend to contribute a new feature to Slint, please discuss it first with the Slint team in its issue before contributing code.
+If there is no issue yet, please open one.
+
+Slint is 1.0 and has a stable API, so **discuss the public API first** with the Slint team.
+Even if an issue exists, please let us know that you plan to work on it and ping @slint-ui/slint .
+That way, your contribution is much more likely to be accepted.
