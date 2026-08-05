@@ -20,6 +20,18 @@ Apart from area labels, there can be other labels used to provide additional con
   The maintainer for the area must remove the tag when more info is provided, or close it if it is too old.
 - https://github.com/slint-ui/slint/labels/need%20triaging: Indicates that the issue needs to be triaged.
 
+The following labels are applied to pull requests by the `PR Policy` workflow, which only ever
+acts on contributors outside the team. See [CONTRIBUTING.md](../../CONTRIBUTING.md#adding-new-features).
+
+- `kind:bugfix`, `kind:feature`, `kind:chore`: The type the author declared in the pull request
+  template. More than one can apply, and a pull request that is both a feature and a bug fix is
+  usually worth asking the author to split.
+- `needs template`: The author did not declare a type, so the pull request was closed. It reopens
+  by itself once the description is fixed.
+- `needs issue`: A feature without an agreed issue, so the pull request was closed. Same recovery.
+- `policy override`: Set this to exempt a pull request from the bot entirely. It stops acting
+  immediately, but it does not reopen anything, so reopen the pull request yourself as well.
+
 ## GitHub Assignee
 
 Here are some guidelines for GitHub assignees:

@@ -42,3 +42,10 @@ If there is no issue yet, please open one.
 Slint is 1.0 and has a stable API, so **discuss the public API first** with the Slint team.
 Even if an issue exists, please let us know that you plan to work on it and ping @slint-ui/slint .
 That way, your contribution is much more likely to be accepted.
+
+To keep this predictable, a bot checks pull requests from outside the Slint team and closes any
+that either leave the "Type of change" section of the pull request template unfilled, or declare
+a new feature without referencing an issue. Bug fixes never need an issue.
+Nothing is lost when that happens: edit the pull request description to fix it and the bot
+reopens the pull request automatically.
+Team members can set the `policy override` label to exempt a pull request from these checks.

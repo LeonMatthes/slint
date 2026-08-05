@@ -1,0 +1,57 @@
+# Copyright © SixtyFPS GmbH <info@slint.dev>
+# SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0
+
+# Label pull requests by the type their author declared, and enforce that a new
+# feature from outside the team was discussed in an issue first. See
+# CONTRIBUTING.md#adding-new-features for the policy this implements.
+#
+# Runs as a pull_request_target so it has a write-scoped token even for fork PRs.
+# That is only safe because this workflow never runs PR code: it reads the PR
+# metadata through the API, and the only thing it checks out is one file of our
+# own from the base branch.
+#
+# The logic lives in .github/pr_policy.js so it can be read and tested as code.
+name: PR Policy
+
+on:
+    pull_request_target:
+        types: [opened, edited, ready_for_review]
+
+permissions:
+    pull-requests: write
+    issues: write
+
+# Two quick edits in a row would otherwise race, and each run reads the labels
+# from its own payload, so both would comment. Never cancel: a cancelled run can
+# leave a label applied with no comment explaining it.
+concurrency:
+    group: pr-policy-${{ github.event.pull_request.number }}
+    cancel-in-progress: false
+
+jobs:
+    check-policy:
+        # Team members and bots are exempt, so skip before doing any work at all.
+        if: >-
+            github.event.pull_request.user.type != 'Bot' &&
+            !contains(fromJson('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) &&
+            !contains(github.event.pull_request.labels.*.name, 'policy override')
+        runs-on: ubuntu-24.04
+        timeout-minutes: 5
+        steps:
+            # No `ref:` here, on purpose. Under pull_request_target the default is the
+            # base branch, so this checks out our own trusted copy of the script. Adding
+            # `ref: github.event.pull_request.head.sha` would let a fork author replace
+            # it and run their code with this job's write-scoped token.
+            - uses: actions/checkout@v7
+              with:
+                  sparse-checkout: .github/pr_policy.js
+                  sparse-checkout-cone-mode: false
+                  persist-credentials: false
+            - uses: actions/github-script@v9
+              env:
+                  PR_BODY: ${{ github.event.pull_request.body }}
+                  DRY_RUN: ${{ vars.PR_POLICY_DRY_RUN }}
+              with:
+                  script: |
+                      const policy = require(`${process.env.GITHUB_WORKSPACE}/.github/pr_policy.js`);
+                      await policy({ github, context, core });
