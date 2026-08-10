@@ -57,7 +57,7 @@ function fakeGithub({ calls, commits, linked, reopenFails, posted }) {
 }
 
 async function run({
-    body = '', labels = [], state = 'open', draft = false, commits = [],
+    body = '', labels = [], state = 'open', commits = [],
     dryRun = false, action = 'opened', linked = [], reopenFails = false, posted = [],
 } = {}) {
     const calls = [];
@@ -71,7 +71,7 @@ async function run({
         repo: { owner: 'slint-ui', repo: 'slint' },
         payload: {
             action,
-            pull_request: { number: PULL_NUMBER, state, draft, labels: labels.map(name => ({ name })) },
+            pull_request: { number: PULL_NUMBER, state, labels: labels.map(name => ({ name })) },
         },
     };
     process.env.PR_BODY = body;
@@ -212,12 +212,8 @@ add('a different unresolvable reference is explained again',
     },
     'comment(unresolved)');
 
-// --- drafts, edits and recovery -------------------------------------------
+// --- edits and recovery -------------------------------------------
 
-add('a draft is labelled but never closed',
-    { body: tick(TEMPLATE, '✨'), draft: true }, 'addLabels(kind:feature) addLabels(needs issue)');
-add('a draft without a template is never closed',
-    { body: 'nope', draft: true }, 'addLabels(needs template)');
 add('marking a draft ready applies the gate',
     { action: 'ready_for_review', body: tick(TEMPLATE, '✨'), labels: ['kind:feature', 'needs issue'] },
     'comment(needs-issue) update(closed)');
@@ -283,6 +279,11 @@ const DANGEROUS = [
 ];
 check('the workflow checks out no pull request code and interpolates nothing into the script',
     DANGEROUS.filter(([pattern]) => pattern.test(workflow)).map(([, complaint]) => complaint));
+
+// Drafts are skipped by the job condition rather than by the script, so nothing in
+// pr_policy.js can protect them.
+check('the workflow skips draft pull requests',
+    /draft\s*==\s*false/.test(workflow) ? [] : ['the job condition no longer excludes drafts']);
 
 const comments = [];
 for (const options of [

@@ -203,13 +203,11 @@ module.exports = async ({ github, context, core }) => {
     await removeLabel(otherRejection);
     await addLabels([label]);
     if (marker && !await alreadySaid(marker)) await comment(`${message}\n\n${marker}`);
-    // A draft is explicitly work in progress; ready_for_review runs this check again.
-    if (pullRequest.draft) return core.info('draft: deferring until ready for review');
     // An edit never closes: otherwise editing the description of a pull request
     // a maintainer had reopened would close it straight back.
     if (wasEdited) return core.info('edited: labelling only, not closing');
-    // Being closed already is the record that we reported this, which the label
-    // is not: a draft and an edit both label without commenting.
+    // Being closed already is the record that we reported this, which the label is
+    // not: an edit labels without commenting.
     if (pullRequest.state === 'closed') return core.info('already closed');
     if (!marker) await comment(message);
     core.info('closing');

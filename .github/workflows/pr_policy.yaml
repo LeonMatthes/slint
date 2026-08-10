@@ -30,8 +30,10 @@ concurrency:
 
 jobs:
     check-policy:
-        # Team members and bots are exempt, so skip before doing any work at all.
+        # Team members, bots and drafts are exempt, so skip before doing any work at
+        # all. A draft is explicitly work in progress; ready_for_review brings it back.
         if: >-
+            github.event.pull_request.draft == false &&
             github.event.pull_request.user.type != 'Bot' &&
             !contains(fromJson('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) &&
             !contains(github.event.pull_request.labels.*.name, 'policy override')
