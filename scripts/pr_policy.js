@@ -5,7 +5,7 @@
 // CONTRIBUTING.md#adding-new-features for the policy itself.
 //
 // This lives outside the YAML so that it can be read, linted and tested like
-// ordinary code. Tests: `node .github/pr_policy_test.mjs`.
+// ordinary code. Tests: `node scripts/pr_policy_test.mjs`.
 //
 // The pull request description reaches this through the PR_BODY environment
 // variable and is untrusted throughout: never log it (the runner reads stdout for
@@ -31,7 +31,7 @@ const NEEDS_TEMPLATE_COMMENT = [
   '**This takes about ten seconds to fix** ♻️ Edit the description and add:',
   '',
   // Kept in step with .github/pull_request_template.md — the test in
-  // .github/pr_policy_test.mjs fails if the two drift apart.
+  // scripts/pr_policy_test.mjs fails if the two drift apart.
   '````markdown',
   '## Type of change',
   '',

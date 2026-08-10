@@ -10,7 +10,7 @@
 # metadata through the API, and the only thing it checks out is one file of our
 # own from the base branch.
 #
-# The logic lives in .github/pr_policy.js so it can be read and tested as code.
+# The logic lives in scripts/pr_policy.js so it can be read and tested as code.
 name: PR Policy
 
 on:
@@ -44,7 +44,7 @@ jobs:
             # it and run their code with this job's write-scoped token.
             - uses: actions/checkout@v7
               with:
-                  sparse-checkout: .github/pr_policy.js
+                  sparse-checkout: scripts/pr_policy.js
                   sparse-checkout-cone-mode: false
                   persist-credentials: false
             - uses: actions/github-script@v9
@@ -53,5 +53,5 @@ jobs:
                   DRY_RUN: ${{ vars.PR_POLICY_DRY_RUN }}
               with:
                   script: |
-                      const policy = require(`${process.env.GITHUB_WORKSPACE}/.github/pr_policy.js`);
+                      const policy = require(`${process.env.GITHUB_WORKSPACE}/scripts/pr_policy.js`);
                       await policy({ github, context, core });

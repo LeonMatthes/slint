@@ -1,19 +1,23 @@
 // Copyright © SixtyFPS GmbH <info@slint.dev>
 // SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0
 
-// Tests for .github/pr_policy.js, the body of the "PR Policy" workflow.
+// Tests for scripts/pr_policy.js, the body of the "PR Policy" workflow.
 //
 // A pull_request_target workflow only ever runs from the default branch, so the
 // bot cannot be exercised by the pull request that changes it. These tests run
 // the real module against a mocked API instead.
 //
-//     node .github/pr_policy_test.mjs
+//     node scripts/pr_policy_test.mjs
 
 import { readFileSync } from 'node:fs';
 import policy from './pr_policy.js';
 
-const WORKFLOW = '.github/workflows/pr_policy.yaml';
-const TEMPLATE = readFileSync('.github/pull_request_template.md', 'utf8');
+// Resolved against this file, not the working directory, so the tests run from
+// anywhere now that they no longer sit next to what they read.
+const inRepo = path => new URL(`../${path}`, import.meta.url);
+
+const WORKFLOW = inRepo('.github/workflows/pr_policy.yaml');
+const TEMPLATE = readFileSync(inRepo('.github/pull_request_template.md'), 'utf8');
 const PULL_NUMBER = 500;
 
 // In the fake repository 100 is an issue, 200 is a pull request, everything else
