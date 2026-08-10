@@ -188,9 +188,8 @@ add('uppercase X, asterisk bullet, level-three heading',
     { body: '### Type of change\n\n* [X] 🐞 Bug fix\n' }, 'addLabels(kind:bugfix)');
 add('CRLF line endings', { body: '## Type of change\r\n\r\n- [x] 🐞 Bug fix\r\n' }, 'addLabels(kind:bugfix)');
 add('emoji deleted, keyword kept', { body: '## Type of change\n\n- [x] Bug fix\n' }, 'addLabels(kind:bugfix)');
-add('a tick nobody can classify is left to the reviewer',
-    { body: '## Type of change\n\n- [x] Something else entirely\n' },
-    'warning(a box is ticked but none of the kinds could be recognised)');
+add('a tick nobody can classify is closed like a missing template',
+    { body: '## Type of change\n\n- [x] Something else entirely\n' }, CLOSED_NO_TEMPLATE);
 
 // --- an author who tried to fix it must hear why it did not work -----------
 

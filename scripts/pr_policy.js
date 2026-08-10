@@ -26,7 +26,7 @@ const FEATURE_REQUEST = 'https://github.com/slint-ui/slint/issues/new?template=2
 const NEEDS_TEMPLATE_COMMENT = [
   '👋 Thanks for opening this — and sorry for the automated close 🤖',
   '',
-  "We couldn't tell what kind of change this is, because the **Type of change** section is missing from the description. We ask for it because new features need an agreed API before implementation, while bug fixes can go straight to review — and we can't tell which path this takes without it.",
+  "We couldn't tell what kind of change this is: the **Type of change** section is either missing from the description, or none of its boxes is ticked in a form we recognise. We ask for it because new features need an agreed API before implementation, while bug fixes can go straight to review — and we can't tell which path this takes without it.",
   '',
   '**This takes about ten seconds to fix** ♻️ Edit the description and add:',
   '',
@@ -115,15 +115,9 @@ function typeOfChangeTicks(body) {
 const kindOf = line =>
   KINDS.find(kind => line.includes(kind.emoji)) || KINDS.find(kind => kind.keyword.test(line));
 
-// `declared` and `ticked` differ when the section was reworded: an unrecognised
-// tick is still a declaration, so it must not be read as a missing template.
-function declaration(body) {
-  const ticks = typeOfChangeTicks(body);
-  const kinds = new Set(ticks.map(kindOf).filter(Boolean));
-  return {
-    declared: KINDS.filter(kind => kinds.has(kind)).map(kind => kind.label),
-    ticked: ticks.length > 0,
-  };
+function declaredKinds(body) {
+  const kinds = new Set(typeOfChangeTicks(body).map(kindOf).filter(Boolean));
+  return KINDS.filter(kind => kinds.has(kind)).map(kind => kind.label);
 }
 
 // Which reference survives the cap below: a changelog-style body can list twenty
@@ -299,18 +293,13 @@ module.exports = async ({ github, context, core }) => {
     return [...checkable, ...elsewhere];
   }
 
-  const { declared, ticked } = declaration(body);
-  core.info(`declared: ${declared.join(', ') || 'nothing'}${ticked ? '' : ' (nothing ticked)'}`);
+  const declared = declaredKinds(body);
+  core.info(`declared: ${declared.join(', ') || 'nothing'}`);
   for (const kind of KINDS) {
     if (!declared.includes(kind.label)) await removeLabel(kind.label);
   }
   await addLabels(declared);
 
-  // Something was ticked but the wording was changed past recognition. That is a
-  // formatting slip, so leave it to the reviewer.
-  if (!declared.length && ticked) {
-    return core.warning('a box is ticked but none of the kinds could be recognised');
-  }
   if (!declared.length) return reject(NEEDS_TEMPLATE, NEEDS_TEMPLATE_COMMENT);
   if (!declared.includes(FEATURE)) return accept();
 
