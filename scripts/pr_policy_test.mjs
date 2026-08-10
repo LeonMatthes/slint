@@ -24,7 +24,7 @@ const PULL_NUMBER = 500;
 // is absent. Numbers are what the bot extracts from an untrusted description.
 const REPO_ISSUES = { 100: {}, 200: { pull_request: {} } };
 
-function fakeGithub({ calls, commits, linked, reopenFails }) {
+function fakeGithub({ calls, commits, linked, reopenFails, posted }) {
     return {
         paginate: async (route, options) => (await route(options)).data,
         graphql: async () => ({
@@ -35,6 +35,7 @@ function fakeGithub({ calls, commits, linked, reopenFails }) {
                 addLabels: async ({ labels }) => calls.push(['addLabels', labels]),
                 removeLabel: async ({ name }) => calls.push(['removeLabel', name]),
                 createComment: async ({ body }) => calls.push(['comment', body]),
+                listComments: async () => ({ data: posted.map(body => ({ body })) }),
                 get: async ({ issue_number }) => {
                     if (!REPO_ISSUES[issue_number]) {
                         throw Object.assign(new Error('Not Found'), { status: 404 });
@@ -57,7 +58,7 @@ function fakeGithub({ calls, commits, linked, reopenFails }) {
 
 async function run({
     body = '', labels = [], state = 'open', draft = false, commits = [],
-    dryRun = false, action = 'opened', linked = [], reopenFails = false,
+    dryRun = false, action = 'opened', linked = [], reopenFails = false, posted = [],
 } = {}) {
     const calls = [];
     const core = {
@@ -65,7 +66,7 @@ async function run({
         warning: message => calls.push(['warning', message]),
         setFailed: message => calls.push(['setFailed', message]),
     };
-    const github = fakeGithub({ calls, commits, linked, reopenFails });
+    const github = fakeGithub({ calls, commits, linked, reopenFails, posted });
     const context = {
         repo: { owner: 'slint-ui', repo: 'slint' },
         payload: {
@@ -92,6 +93,7 @@ function withIssue(text, number) {
 
 const COMMENT_KINDS = [
     [/could not reopen/, 'manual-reopen'],
+    [/still can't find an issue/, 'unresolved'],
     [/Type of change/, 'needs-template'],
     [/new feature/, 'needs-issue'],
     [/.*/, 'reopened'],
@@ -112,6 +114,7 @@ const add = (name, options, expected) => cases.push({ name, options, expected })
 
 const CLOSED_NO_ISSUE = 'addLabels(kind:feature) addLabels(needs issue) comment(needs-issue) update(closed)';
 const CLOSED_NO_TEMPLATE = 'addLabels(needs template) comment(needs-template) update(closed)';
+const CLOSED_UNRESOLVED = 'addLabels(kind:feature) addLabels(needs issue) comment(unresolved) update(closed)';
 
 // --- the template as contributors actually receive it ---------------------
 
@@ -129,10 +132,17 @@ add('only the checklist ticked', { body: TEMPLATE.replace(/- \[ \] If/g, '- [x] 
 
 // --- what counts as referencing an issue ----------------------------------
 
-add('reference to a pull request does not count',
-    { body: withIssue(tick(TEMPLATE, '✨'), 200) }, CLOSED_NO_ISSUE);
-add('reference to a missing issue does not count',
-    { body: withIssue(tick(TEMPLATE, '✨'), 999) }, CLOSED_NO_ISSUE);
+add('a referenced pull request is reported, not silently ignored',
+    { body: withIssue(tick(TEMPLATE, '✨'), 200) }, CLOSED_UNRESOLVED);
+add('a referenced missing issue is reported, not silently ignored',
+    { body: withIssue(tick(TEMPLATE, '✨'), 999) }, CLOSED_UNRESOLVED);
+add('an issue in another repository is reported as such',
+    { body: tick(TEMPLATE, '✨') + '\nDiscussed in other-org/other-repo#100\n' }, CLOSED_UNRESOLVED);
+add('an issue URL for another repository is reported as such',
+    { body: tick(TEMPLATE, '✨') + '\nSee https://github.com/other-org/other-repo/issues/100\n' },
+    CLOSED_UNRESOLVED);
+add('another repository is never looked up under our own numbers',
+    { body: tick(TEMPLATE, '✨') + '\nDiscussed in other-org/other-repo#100\n' }, CLOSED_UNRESOLVED);
 add('self-reference does not count',
     { body: withIssue(tick(TEMPLATE, '✨'), PULL_NUMBER) }, CLOSED_NO_ISSUE);
 add('issue in a commit message counts',
@@ -160,7 +170,7 @@ add('a whitespace flood does not stall the job', { body: ' '.repeat(65536) + '\n
     const decoys = Array.from({ length: 500 }, (_, index) => `#${9000 + index}`).join(' ');
     add('reference spam is capped',
         { body: tick(TEMPLATE, '✨') + '\n' + decoys },
-        'addLabels(kind:feature) warning(gave up after 20 of 500 referenced numbers) addLabels(needs issue) comment(needs-issue) update(closed)');
+        'addLabels(kind:feature) warning(gave up after 20 of 500 referenced numbers) addLabels(needs issue) comment(unresolved) update(closed)');
     add('a deliberate reference outranks decoys',
         { body: tick(TEMPLATE, '✨') + '\n' + decoys + '\nDiscussed in: #100\n' },
         'addLabels(kind:feature)');
@@ -181,6 +191,26 @@ add('emoji deleted, keyword kept', { body: '## Type of change\n\n- [x] Bug fix\n
 add('a tick nobody can classify is left to the reviewer',
     { body: '## Type of change\n\n- [x] Something else entirely\n' },
     'warning(a box is ticked but none of the kinds could be recognised)');
+
+// --- an author who tried to fix it must hear why it did not work -----------
+
+add('an edit with an unresolvable reference is explained',
+    { action: 'edited', body: withIssue(tick(TEMPLATE, '✨'), 999), labels: ['kind:feature', 'needs issue'], state: 'closed' },
+    'comment(unresolved)');
+add('the same unresolvable reference is not explained twice',
+    {
+        action: 'edited', body: withIssue(tick(TEMPLATE, '✨'), 999),
+        labels: ['kind:feature', 'needs issue'], state: 'closed',
+        posted: ['\u003c!-- pr-policy:unresolved #999 --\u003e'],
+    },
+    '');
+add('a different unresolvable reference is explained again',
+    {
+        action: 'edited', body: withIssue(tick(TEMPLATE, '✨'), 998),
+        labels: ['kind:feature', 'needs issue'], state: 'closed',
+        posted: ['\u003c!-- pr-policy:unresolved #999 --\u003e'],
+    },
+    'comment(unresolved)');
 
 // --- drafts, edits and recovery -------------------------------------------
 

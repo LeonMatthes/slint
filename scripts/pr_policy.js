@@ -63,6 +63,26 @@ const NEEDS_ISSUE_COMMENT = [
   '🐞 If this is actually a **bug fix** and not a new feature, tick the `Bug fix` box in the description instead — bug fixes don’t need an issue, and I’ll reopen right away.',
 ].join('\n');
 
+// Saying only "no issue referenced" to someone who plainly referenced something
+// reads as the bot being broken, so name what was looked up and why it missed.
+const unresolvedIssueComment = (attempted, repository) => [
+  "👋 Thanks for the update — but I still can't find an issue for this feature 🤖",
+  '',
+  `I looked up ${attempted.map(reference => `\`${reference.text}\``).join(', ')} and found no matching **issue in \`${repository}\`**.`,
+  '',
+  'The usual reasons:',
+  '',
+  '- the number is a **pull request**, not an issue',
+  `- the issue is in a **different repository** — it has to be an issue in \`${repository}\``,
+  '- the number is a typo',
+  '',
+  'Please point the feature line at the issue where the API was discussed:',
+  '',
+  '`- [x] ✨ New feature / public API change - discussed in: #1234`',
+  '',
+  `👉 [Adding New Features](${CONTRIBUTING})`,
+].join('\n');
+
 const REOPENED_COMMENT = '✨ Thanks for updating the description — reopening! A reviewer will take a look.';
 const MANUAL_REOPEN_COMMENT = '👋 Thanks for updating the description — that fixes it! I could not reopen this pull request automatically, so please reopen it yourself, or open a new one if the branch is gone.';
 
@@ -106,8 +126,34 @@ function declaration(body) {
   };
 }
 
-const numbersMatching = (text, pattern) =>
-  [...text.matchAll(pattern)].map(([, issueNumber]) => Number(issueNumber));
+// Which reference survives the cap below: a changelog-style body can list twenty
+// numbers before it gets to the one that matters.
+const INTRODUCED_BY_KEYWORD = /(?:discussed in|fixes|closes|resolves|refs?|see)[\s:]*$/i;
+
+// `repository: null` means a bare `#123`, which always means this repository. The
+// owner and repository are captured rather than assumed, so a reference to another
+// repository is not looked up here under the same number.
+const REFERENCE_PATTERNS = [
+  /([\w.-]+)\/([\w.-]+)#(\d+)\b/g,
+  /github\.com\/([\w.-]+)\/([\w.-]+)\/issues\/(\d+)\b/g,
+  /(?:^|[^\w/])#(\d+)\b/gm,
+];
+
+function references(text) {
+  const found = [];
+  for (const pattern of REFERENCE_PATTERNS) {
+    for (const match of text.matchAll(pattern)) {
+      const [owner, repository, number] = match.length === 4 ? match.slice(1) : [null, null, match[1]];
+      found.push({
+        text: owner ? `${owner}/${repository}#${number}` : `#${number}`,
+        repository: owner && `${owner}/${repository}`,
+        number: Number(number),
+        deliberate: INTRODUCED_BY_KEYWORD.test(text.slice(Math.max(0, match.index - 24), match.index)),
+      });
+    }
+  }
+  return found;
+}
 
 module.exports = async ({ github, context, core }) => {
   const pullRequest = context.payload.pull_request;
@@ -117,6 +163,7 @@ module.exports = async ({ github, context, core }) => {
   const issueTarget = { ...context.repo, issue_number: pullRequestNumber };
   const pullTarget = { ...context.repo, pull_number: pullRequestNumber };
   const presentLabels = new Set(pullRequest.labels.map(label => label.name));
+  const repository = `${context.repo.owner}/${context.repo.repo}`;
   const body = withoutCode(process.env.PR_BODY || '');
 
   async function addLabels(labels) {
@@ -143,10 +190,19 @@ module.exports = async ({ github, context, core }) => {
     if (!dryRun) await github.rest.issues.createComment({ ...issueTarget, body: message });
   }
 
-  async function reject(label, message) {
+  async function alreadySaid(marker) {
+    const posted = await github.paginate(github.rest.issues.listComments, { ...issueTarget, per_page: 100 });
+    return posted.some(posting => (posting.body || '').includes(marker));
+  }
+
+  // `marker` names a specific complaint. Those are said even when we otherwise stay
+  // quiet, because an author who tried to fix something has to learn why it did not
+  // work; the marker keeps it to once per distinct cause.
+  async function reject(label, message, marker) {
     const otherRejection = label === NEEDS_TEMPLATE ? NEEDS_ISSUE : NEEDS_TEMPLATE;
     await removeLabel(otherRejection);
     await addLabels([label]);
+    if (marker && !await alreadySaid(marker)) await comment(`${message}\n\n${marker}`);
     // A draft is explicitly work in progress; ready_for_review runs this check again.
     if (pullRequest.draft) return core.info('draft: deferring until ready for review');
     // An edit never closes: otherwise editing the description of a pull request
@@ -155,7 +211,7 @@ module.exports = async ({ github, context, core }) => {
     // Being closed already is the record that we reported this, which the label
     // is not: a draft and an edit both label without commenting.
     if (pullRequest.state === 'closed') return core.info('already closed');
-    await comment(message);
+    if (!marker) await comment(message);
     core.info('closing');
     if (!dryRun) await github.rest.pulls.update({ ...pullTarget, state: 'closed' });
   }
@@ -200,21 +256,19 @@ module.exports = async ({ github, context, core }) => {
     }
   }
 
-  async function referencedNumbers() {
+  async function referencedHere() {
     const commits = await github.paginate(github.rest.pulls.listCommits, { ...pullTarget, per_page: 100 });
     const text = [body, ...commits.map(commit => withoutCode(commit.commit.message))].join('\n');
-    // Insertion order decides who survives the cap below, so the deliberate
-    // references come first: a changelog-style body can list twenty numbers
-    // before it gets to the one that matters.
-    const numbers = new Set([
-      ...await linkedIssues(),
-      ...numbersMatching(text, /(?:discussed in|fixes|closes|resolves|refs?|see)[\s:]*(?:slint-ui\/slint)?#(\d+)\b/gi),
-      ...numbersMatching(text, /(?:^|[^\w/])#(\d+)\b/gm),
-      ...numbersMatching(text, /slint-ui\/slint#(\d+)\b/g),
-      ...numbersMatching(text, /slint-ui\/slint\/issues\/(\d+)\b/g),
-    ]);
-    numbers.delete(pullRequestNumber);
-    return numbers;
+    const linked = (await linkedIssues()).map(number => ({ text: `#${number}`, number, deliberate: true }));
+    const cited = references(text).filter(reference => reference.number !== pullRequestNumber);
+
+    const here = reference => !reference.repository || reference.repository.toLowerCase() === repository.toLowerCase();
+    const mine = [...linked, ...cited.filter(here)].sort((a, b) => b.deliberate - a.deliberate);
+    const seen = new Set();
+    return {
+      candidates: mine.filter(reference => !seen.has(reference.number) && seen.add(reference.number)),
+      elsewhere: cited.filter(reference => !here(reference)),
+    };
   }
 
   // Referencing an issue is what shows the API was discussed, so a reference to
@@ -229,21 +283,22 @@ module.exports = async ({ github, context, core }) => {
     }
   }
 
-  async function referencesAnIssue() {
-    const numbers = await referencedNumbers();
+  // Returns the references that were tried and missed, or null once one resolves.
+  async function unresolvedReferences() {
+    const { candidates, elsewhere } = await referencedHere();
     // One API call per candidate, and the body is untrusted: a description full of
     // `#1 #2 #3 ...` would otherwise burn the whole repository's hourly rate limit.
-    const checkable = [...numbers].slice(0, MAX_CANDIDATES);
-    for (const number of checkable) {
-      if (await isIssue(number)) {
-        core.info(`references issue #${number}`);
-        return true;
+    const checkable = candidates.slice(0, MAX_CANDIDATES);
+    for (const reference of checkable) {
+      if (await isIssue(reference.number)) {
+        core.info(`references issue #${reference.number}`);
+        return null;
       }
     }
-    if (numbers.size > checkable.length) {
-      core.warning(`gave up after ${MAX_CANDIDATES} of ${numbers.size} referenced numbers`);
+    if (candidates.length > checkable.length) {
+      core.warning(`gave up after ${MAX_CANDIDATES} of ${candidates.length} referenced numbers`);
     }
-    return false;
+    return [...checkable, ...elsewhere];
   }
 
   const { declared, ticked } = declaration(body);
@@ -259,6 +314,16 @@ module.exports = async ({ github, context, core }) => {
     return core.warning('a box is ticked but none of the kinds could be recognised');
   }
   if (!declared.length) return reject(NEEDS_TEMPLATE, NEEDS_TEMPLATE_COMMENT);
-  if (!declared.includes(FEATURE) || await referencesAnIssue()) return accept();
-  return reject(NEEDS_ISSUE, NEEDS_ISSUE_COMMENT);
+  if (!declared.includes(FEATURE)) return accept();
+
+  const unresolved = await unresolvedReferences();
+  if (!unresolved) return accept();
+  if (!unresolved.length) return reject(NEEDS_ISSUE, NEEDS_ISSUE_COMMENT);
+
+  const shown = unresolved.slice(0, 5);
+  return reject(
+    NEEDS_ISSUE,
+    unresolvedIssueComment(shown, repository),
+    `<!-- pr-policy:unresolved ${shown.map(reference => reference.text).join(' ')} -->`,
+  );
 };
