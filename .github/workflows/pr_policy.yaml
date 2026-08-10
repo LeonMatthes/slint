@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0
 
 # Label pull requests by the type their author declared, and enforce that a new
-# feature from outside the team was discussed in an issue first. See
+# feature from outside the team was discussed in an issue first. Enforcement means
+# sending the pull request back to draft, not closing it, so it stays visible. See
 # CONTRIBUTING.md#adding-new-features for the policy this implements.
 #
 # Runs as a pull_request_target so it has a write-scoped token even for fork PRs.

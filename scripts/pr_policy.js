@@ -24,7 +24,7 @@ const CONTRIBUTING = 'https://github.com/slint-ui/slint/blob/master/CONTRIBUTING
 const FEATURE_REQUEST = 'https://github.com/slint-ui/slint/issues/new?template=2-feature-request.yaml';
 
 const NEEDS_TEMPLATE_COMMENT = [
-  '👋 Thanks for opening this — and sorry for the automated close 🤖',
+  "👋 Thanks for opening this! I've moved it back to **draft** for now 🤖",
   '',
   "We couldn't tell what kind of change this is: the **Type of change** section is either missing from the description, or none of its boxes is ticked in a form we recognise. We ask for it because new features need an agreed API before implementation, while bug fixes can go straight to review — and we can't tell which path this takes without it.",
   '',
@@ -40,27 +40,27 @@ const NEEDS_TEMPLATE_COMMENT = [
   '- [ ] ✨ New feature / public API change - discussed in: #xxx',
   '````',
   '',
-  "Tick whatever applies — more than one is fine — and I'll reopen this automatically. Your branch and diff are untouched.",
+  'Tick whatever applies — more than one is fine — then press **Ready for review** and I will check again. Nothing is lost: your branch, diff and review comments are all untouched.',
   '',
   `👉 [Contributing guidelines](${CONTRIBUTING})`,
 ].join('\n');
 
 const NEEDS_ISSUE_COMMENT = [
-  '👋 Thank you for this contribution — and sorry for the automated close 🤖',
+  "👋 Thank you for this contribution! I've moved it back to **draft** for now 🤖",
   '',
   'This PR is marked as a **new feature**, and Slint is 1.0 with a stable public API: every API we merge, we maintain forever. So we like to agree on the API **first**, in an issue, before anyone writes the implementation. That’s to protect your time as much as ours — nothing is worse than finishing a feature and then hearing we can’t take it in that shape.',
   '',
   `👉 [Adding New Features](${CONTRIBUTING})`,
   '',
-  "**Your work isn't lost** — the branch and the diff are untouched. To pick it back up:",
+  "**Your work isn't lost** — the branch, the diff and any review comments are untouched. To pick it back up:",
   '',
   // The team handle stays in a code span on purpose: a live mention here would
   // notify the whole team on every rejection, which is spammable.
   `1. Open a ✨ [Feature Request](${FEATURE_REQUEST}) describing the API you have in mind (or find the existing issue), and ping \`@slint-ui/slint\` there`,
   "2. Once we've agreed on the shape of the API, edit this PR's description and fill in the issue number on the feature line: `- [x] ✨ New feature / public API change - discussed in: #1234`",
-  "3. I'll reopen this PR automatically ♻️",
+  '3. Press **Ready for review** and I will check again ♻️',
   '',
-  '🐞 If this is actually a **bug fix** and not a new feature, tick the `Bug fix` box in the description instead — bug fixes don’t need an issue, and I’ll reopen right away.',
+  '🐞 If this is actually a **bug fix** and not a new feature, tick the `Bug fix` box in the description instead — bug fixes need no issue.',
 ].join('\n');
 
 // Saying only "no issue referenced" to someone who plainly referenced something
@@ -76,22 +76,20 @@ const unresolvedIssueComment = (attempted, repository) => [
   `- the issue is in a **different repository** — it has to be an issue in \`${repository}\``,
   '- the number is a typo',
   '',
-  'Please point the feature line at the issue where the API was discussed:',
+  'Please point the feature line at the issue where the API was discussed, then press **Ready for review**:',
   '',
   '`- [x] ✨ New feature / public API change - discussed in: #1234`',
   '',
   `👉 [Adding New Features](${CONTRIBUTING})`,
 ].join('\n');
 
-const REOPENED_COMMENT = '✨ Thanks for updating the description — reopening! A reviewer will take a look.';
-const MANUAL_REOPEN_COMMENT = '👋 Thanks for updating the description — that fixes it! I could not reopen this pull request automatically, so please reopen it yourself, or open a new one if the branch is gone.';
+const READY_COMMENT = '✨ Thanks for updating the description — this looks good now. A reviewer will take a look!';
 
 // A Slint PR body routinely contains colours like `#8888`, which would otherwise
 // read as issue references and wave the feature gate through.
 const withoutCode = text => text.replace(/```[\s\S]*?```/g, '').replace(/`[^`\n]*`/g, '');
 
-// The heading is matched loosely: a retyped or reworded one is a formatting slip,
-// not a reason to close someone's pull request.
+// The heading is matched loosely: a retyped or reworded one is a formatting slip.
 // Strip the markdown decoration with one character class rather than matching
 // around it: `\s*` on both sides of an optional group backtracks quadratically.
 const isTypeOfChangeHeading = line => /^type of change\b/i.test(line.replace(/^[\s#*]+/, ''));
@@ -189,6 +187,14 @@ module.exports = async ({ github, context, core }) => {
     return posted.some(posting => (posting.body || '').includes(marker));
   }
 
+  // Draft state is not in the REST API, only in GraphQL.
+  async function convertToDraft() {
+    const mutation = `mutation($pullRequest: ID!) {
+      convertPullRequestToDraft(input: { pullRequestId: $pullRequest }) { clientMutationId }
+    }`;
+    await github.graphql(mutation, { pullRequest: pullRequest.node_id });
+  }
+
   // `marker` names a specific complaint. Those are said even when we otherwise stay
   // quiet, because an author who tried to fix something has to learn why it did not
   // work; the marker keeps it to once per distinct cause.
@@ -197,40 +203,25 @@ module.exports = async ({ github, context, core }) => {
     await removeLabel(otherRejection);
     await addLabels([label]);
     if (marker && !await alreadySaid(marker)) await comment(`${message}\n\n${marker}`);
-    // An edit never closes: otherwise editing the description of a pull request
-    // a maintainer had reopened would close it straight back.
-    if (wasEdited) return core.info('edited: labelling only, not closing');
-    // Being closed already is the record that we reported this, which the label is
-    // not: an edit labels without commenting.
-    if (pullRequest.state === 'closed') return core.info('already closed');
+    // An edit never drafts: otherwise editing the description of a pull request a
+    // maintainer had marked ready would send it straight back to draft.
+    if (wasEdited) return core.info('edited: labelling only, not converting to draft');
     if (!marker) await comment(message);
-    core.info('closing');
-    if (!dryRun) await github.rest.pulls.update({ ...pullTarget, state: 'closed' });
+    core.info('converting to draft');
+    if (!dryRun) await convertToDraft();
   }
 
+  // Nothing to undo: the bot only ever sees a pull request the author has marked
+  // ready again, so clearing the labels is all that is left.
   async function accept() {
     const rejections = [NEEDS_TEMPLATE, NEEDS_ISSUE].filter(label => presentLabels.has(label));
     if (!rejections.length) return;
-    if (pullRequest.state !== 'closed') {
-      for (const label of rejections) await removeLabel(label);
-      return;
-    }
-    core.info('reopening');
-    if (dryRun) return;
-    // Reopen before clearing the labels: if the fork branch is gone the reopen
-    // fails, and the labels are the only record of why it is closed.
-    try {
-      await github.rest.pulls.update({ ...pullTarget, state: 'open' });
-    } catch (error) {
-      core.warning(`could not reopen: ${error.message}`);
-      return comment(MANUAL_REOPEN_COMMENT);
-    }
     for (const label of rejections) await removeLabel(label);
-    await comment(REOPENED_COMMENT);
+    await comment(READY_COMMENT);
   }
 
   // Issues linked through the sidebar leave no trace in the body, so ask GitHub
-  // for them rather than closing a PR that did discuss the API.
+  // for them rather than drafting a PR that did discuss the API.
   async function linkedIssues() {
     const query = `query($owner:String!, $repo:String!, $number:Int!) {
       repository(owner:$owner, name:$repo) {

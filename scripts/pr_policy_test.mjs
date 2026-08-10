@@ -24,12 +24,13 @@ const PULL_NUMBER = 500;
 // is absent. Numbers are what the bot extracts from an untrusted description.
 const REPO_ISSUES = { 100: {}, 200: { pull_request: {} } };
 
-function fakeGithub({ calls, commits, linked, reopenFails, posted }) {
+function fakeGithub({ calls, commits, linked, posted }) {
     return {
         paginate: async (route, options) => (await route(options)).data,
-        graphql: async () => ({
-            repository: { pullRequest: { closingIssuesReferences: { nodes: linked.map(number => ({ number })) } } },
-        }),
+        graphql: async query => {
+            if (/convertPullRequestToDraft/.test(query)) return calls.push(['draft']) && {};
+            return { repository: { pullRequest: { closingIssuesReferences: { nodes: linked.map(number => ({ number })) } } } };
+        },
         rest: {
             issues: {
                 addLabels: async ({ labels }) => calls.push(['addLabels', labels]),
@@ -45,11 +46,9 @@ function fakeGithub({ calls, commits, linked, reopenFails, posted }) {
             },
             pulls: {
                 listCommits: async () => ({ data: commits.map(message => ({ commit: { message } })) }),
-                update: async ({ state }) => {
-                    if (state === 'open' && reopenFails) {
-                        throw Object.assign(new Error('branch is gone'), { status: 422 });
-                    }
-                    calls.push(['update', state]);
+                // Draft state is GraphQL-only, so the bot must never reach for this.
+                update: async () => {
+                    throw new Error('pulls.update must not be used');
                 },
             },
         },
@@ -58,7 +57,7 @@ function fakeGithub({ calls, commits, linked, reopenFails, posted }) {
 
 async function run({
     body = '', labels = [], state = 'open', commits = [],
-    dryRun = false, action = 'opened', linked = [], reopenFails = false, posted = [],
+    dryRun = false, action = 'opened', linked = [], posted = [],
 } = {}) {
     const calls = [];
     const core = {
@@ -66,12 +65,12 @@ async function run({
         warning: message => calls.push(['warning', message]),
         setFailed: message => calls.push(['setFailed', message]),
     };
-    const github = fakeGithub({ calls, commits, linked, reopenFails, posted });
+    const github = fakeGithub({ calls, commits, linked, posted });
     const context = {
         repo: { owner: 'slint-ui', repo: 'slint' },
         payload: {
             action,
-            pull_request: { number: PULL_NUMBER, state, labels: labels.map(name => ({ name })) },
+            pull_request: { number: PULL_NUMBER, node_id: 'PR_test', state, labels: labels.map(name => ({ name })) },
         },
     };
     process.env.PR_BODY = body;
@@ -92,17 +91,17 @@ function withIssue(text, number) {
 }
 
 const COMMENT_KINDS = [
-    [/could not reopen/, 'manual-reopen'],
     [/still can't find an issue/, 'unresolved'],
+    [/looks good now/, 'ready'],
     [/Type of change/, 'needs-template'],
     [/new feature/, 'needs-issue'],
-    [/.*/, 'reopened'],
 ];
 
 const commentKind = text => COMMENT_KINDS.find(([pattern]) => pattern.test(text))[1];
 
 function describeCall([kind, value]) {
     if (kind === 'info') return null;
+    if (kind === 'draft') return 'draft';
     if (kind === 'comment') return `comment(${commentKind(value)})`;
     return `${kind}(${Array.isArray(value) ? value.join('+') : value})`;
 }
@@ -112,39 +111,39 @@ const summary = calls => calls.map(describeCall).filter(Boolean).join(' ');
 const cases = [];
 const add = (name, options, expected) => cases.push({ name, options, expected });
 
-const CLOSED_NO_ISSUE = 'addLabels(kind:feature) addLabels(needs issue) comment(needs-issue) update(closed)';
-const CLOSED_NO_TEMPLATE = 'addLabels(needs template) comment(needs-template) update(closed)';
-const CLOSED_UNRESOLVED = 'addLabels(kind:feature) addLabels(needs issue) comment(unresolved) update(closed)';
+const DRAFTED_NO_ISSUE = 'addLabels(kind:feature) addLabels(needs issue) comment(needs-issue) draft';
+const DRAFTED_NO_TEMPLATE = 'addLabels(needs template) comment(needs-template) draft';
+const DRAFTED_UNRESOLVED = 'addLabels(kind:feature) addLabels(needs issue) comment(unresolved) draft';
 
 // --- the template as contributors actually receive it ---------------------
 
-add('untouched template', { body: TEMPLATE }, CLOSED_NO_TEMPLATE);
+add('untouched template', { body: TEMPLATE }, DRAFTED_NO_TEMPLATE);
 add('bugfix only', { body: tick(TEMPLATE, '🐞') }, 'addLabels(kind:bugfix)');
 add('chore only', { body: tick(TEMPLATE, '📚') }, 'addLabels(kind:chore)');
-add('feature, issue left as #xxx', { body: tick(TEMPLATE, '✨') }, CLOSED_NO_ISSUE);
+add('feature, issue left as #xxx', { body: tick(TEMPLATE, '✨') }, DRAFTED_NO_ISSUE);
 add('feature with the issue filled in',
     { body: withIssue(tick(TEMPLATE, '✨'), 100) }, 'addLabels(kind:feature)');
 add('feature and bugfix', { body: tick(TEMPLATE, '✨', '🐞') },
-    `addLabels(kind:bugfix+kind:feature) ${CLOSED_NO_ISSUE.replace('addLabels(kind:feature) ', '')}`);
+    `addLabels(kind:bugfix+kind:feature) ${DRAFTED_NO_ISSUE.replace('addLabels(kind:feature) ', '')}`);
 add('all three ticked', { body: tick(TEMPLATE, '🐞', '📚', '✨') },
-    'addLabels(kind:bugfix+kind:feature+kind:chore) addLabels(needs issue) comment(needs-issue) update(closed)');
-add('only the checklist ticked', { body: TEMPLATE.replace(/- \[ \] If/g, '- [x] If') }, CLOSED_NO_TEMPLATE);
+    'addLabels(kind:bugfix+kind:feature+kind:chore) addLabels(needs issue) comment(needs-issue) draft');
+add('only the checklist ticked', { body: TEMPLATE.replace(/- \[ \] If/g, '- [x] If') }, DRAFTED_NO_TEMPLATE);
 
 // --- what counts as referencing an issue ----------------------------------
 
 add('a referenced pull request is reported, not silently ignored',
-    { body: withIssue(tick(TEMPLATE, '✨'), 200) }, CLOSED_UNRESOLVED);
+    { body: withIssue(tick(TEMPLATE, '✨'), 200) }, DRAFTED_UNRESOLVED);
 add('a referenced missing issue is reported, not silently ignored',
-    { body: withIssue(tick(TEMPLATE, '✨'), 999) }, CLOSED_UNRESOLVED);
+    { body: withIssue(tick(TEMPLATE, '✨'), 999) }, DRAFTED_UNRESOLVED);
 add('an issue in another repository is reported as such',
-    { body: tick(TEMPLATE, '✨') + '\nDiscussed in other-org/other-repo#100\n' }, CLOSED_UNRESOLVED);
+    { body: tick(TEMPLATE, '✨') + '\nDiscussed in other-org/other-repo#100\n' }, DRAFTED_UNRESOLVED);
 add('an issue URL for another repository is reported as such',
     { body: tick(TEMPLATE, '✨') + '\nSee https://github.com/other-org/other-repo/issues/100\n' },
-    CLOSED_UNRESOLVED);
+    DRAFTED_UNRESOLVED);
 add('another repository is never looked up under our own numbers',
-    { body: tick(TEMPLATE, '✨') + '\nDiscussed in other-org/other-repo#100\n' }, CLOSED_UNRESOLVED);
+    { body: tick(TEMPLATE, '✨') + '\nDiscussed in other-org/other-repo#100\n' }, DRAFTED_UNRESOLVED);
 add('self-reference does not count',
-    { body: withIssue(tick(TEMPLATE, '✨'), PULL_NUMBER) }, CLOSED_NO_ISSUE);
+    { body: withIssue(tick(TEMPLATE, '✨'), PULL_NUMBER) }, DRAFTED_NO_ISSUE);
 add('issue in a commit message counts',
     { body: tick(TEMPLATE, '✨'), commits: ['core: do a thing\n\nFixes #100'] }, 'addLabels(kind:feature)');
 add('issue linked through the sidebar counts',
@@ -159,18 +158,18 @@ add('owner/repo#n shorthand counts',
 
 add('a colour in a code fence is not a reference',
     { body: tick(TEMPLATE, '✨') + '\n```slint\nText { color: #100; background: #8888; }\n```\n' },
-    CLOSED_NO_ISSUE);
+    DRAFTED_NO_ISSUE);
 add('a colour in inline code is not a reference',
-    { body: tick(TEMPLATE, '✨') + '\nUse `#100` for the colour.\n' }, CLOSED_NO_ISSUE);
+    { body: tick(TEMPLATE, '✨') + '\nUse `#100` for the colour.\n' }, DRAFTED_NO_ISSUE);
 add('workflow commands in the body never reach the log',
     { body: '## Type of change\n\n- [x] 🐞 Bug fix\n\n::error::pwned\n::stop-commands::x\n' },
     'addLabels(kind:bugfix)');
-add('a whitespace flood does not stall the job', { body: ' '.repeat(65536) + '\n' }, CLOSED_NO_TEMPLATE);
+add('a whitespace flood does not stall the job', { body: ' '.repeat(65536) + '\n' }, DRAFTED_NO_TEMPLATE);
 {
     const decoys = Array.from({ length: 500 }, (_, index) => `#${9000 + index}`).join(' ');
     add('reference spam is capped',
         { body: tick(TEMPLATE, '✨') + '\n' + decoys },
-        'addLabels(kind:feature) warning(gave up after 20 of 500 referenced numbers) addLabels(needs issue) comment(unresolved) update(closed)');
+        'addLabels(kind:feature) warning(gave up after 20 of 500 referenced numbers) addLabels(needs issue) comment(unresolved) draft');
     add('a deliberate reference outranks decoys',
         { body: tick(TEMPLATE, '✨') + '\n' + decoys + '\nDiscussed in: #100\n' },
         'addLabels(kind:feature)');
@@ -189,7 +188,7 @@ add('uppercase X, asterisk bullet, level-three heading',
 add('CRLF line endings', { body: '## Type of change\r\n\r\n- [x] 🐞 Bug fix\r\n' }, 'addLabels(kind:bugfix)');
 add('emoji deleted, keyword kept', { body: '## Type of change\n\n- [x] Bug fix\n' }, 'addLabels(kind:bugfix)');
 add('a tick nobody can classify is closed like a missing template',
-    { body: '## Type of change\n\n- [x] Something else entirely\n' }, CLOSED_NO_TEMPLATE);
+    { body: '## Type of change\n\n- [x] Something else entirely\n' }, DRAFTED_NO_TEMPLATE);
 
 // --- an author who tried to fix it must hear why it did not work -----------
 
@@ -215,16 +214,16 @@ add('a different unresolvable reference is explained again',
 
 add('marking a draft ready applies the gate',
     { action: 'ready_for_review', body: tick(TEMPLATE, '✨'), labels: ['kind:feature', 'needs issue'] },
-    'comment(needs-issue) update(closed)');
-add('recovering from needs issue',
+    'comment(needs-issue) draft');
+add('a fixed description clears the rejection',
     { action: 'edited', body: withIssue(tick(TEMPLATE, '✨'), 100), labels: ['kind:feature', 'needs issue'], state: 'closed' },
-    'update(open) removeLabel(needs issue) comment(reopened)');
-add('recovering from needs template',
+    'removeLabel(needs issue) comment(ready)');
+add('a declared type clears the rejection',
     { action: 'edited', body: tick(TEMPLATE, '🐞'), labels: ['needs template'], state: 'closed' },
-    'addLabels(kind:bugfix) update(open) removeLabel(needs template) comment(reopened)');
-add('a feature downgraded to a chore is reopened',
+    'addLabels(kind:bugfix) removeLabel(needs template) comment(ready)');
+add('a feature downgraded to a chore is accepted',
     { action: 'edited', body: tick(TEMPLATE, '📚'), labels: ['kind:feature', 'needs issue'], state: 'closed' },
-    'removeLabel(kind:feature) addLabels(kind:chore) update(open) removeLabel(needs issue) comment(reopened)');
+    'removeLabel(kind:feature) addLabels(kind:chore) removeLabel(needs issue) comment(ready)');
 add('an edit that still fails does not comment twice',
     { action: 'edited', body: tick(TEMPLATE, '✨'), labels: ['kind:feature', 'needs issue'], state: 'closed' }, '');
 add('a changed rejection reason swaps the label',
@@ -235,9 +234,6 @@ add('an edit never closes a pull request a maintainer reopened',
     'addLabels(needs issue)');
 add('a maintainer close is not undone',
     { body: tick(TEMPLATE, '🐞'), labels: ['kind:bugfix'], state: 'closed' }, '');
-add('a failed reopen keeps the label and explains itself',
-    { action: 'edited', body: tick(TEMPLATE, '🐞'), labels: ['needs template'], state: 'closed', reopenFails: true },
-    'addLabels(kind:bugfix) warning(could not reopen: branch is gone) comment(manual-reopen)');
 add('a dry run writes nothing', { body: tick(TEMPLATE, '✨'), dryRun: true }, '');
 
 let checks = 0;

@@ -26,11 +26,12 @@ acts on contributors outside the team. See [CONTRIBUTING.md](../../CONTRIBUTING.
 - `kind:bugfix`, `kind:feature`, `kind:chore`: The type the author declared in the pull request
   template. More than one can apply, and a pull request that is both a feature and a bug fix is
   usually worth asking the author to split.
-- `needs template`: The author did not declare a type, so the pull request was closed. It reopens
-  by itself once the description is fixed.
-- `needs issue`: A feature without an agreed issue, so the pull request was closed. Same recovery.
+- `needs template`: The author did not declare a type, so the pull request was sent back to
+  draft. The author fixes the description and presses "Ready for review" to have it rechecked.
+- `needs issue`: A feature without an agreed issue, so the pull request was sent back to draft.
+  Same recovery.
 - `policy override`: Set this to exempt a pull request from the bot entirely. It stops acting
-  immediately, but it does not reopen anything, so reopen the pull request yourself as well.
+  immediately, but it does not undraft anything, so mark the pull request ready yourself as well.
 
 ## GitHub Assignee
 

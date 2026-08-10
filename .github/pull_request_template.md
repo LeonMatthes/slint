@@ -4,8 +4,9 @@
 
 <!--
 Tick at least one. More than one is fine.
-Leaving this section out closes the pull request automatically, because we cannot
-tell whether it needs an API discussion first. Fixing it reopens the pull request.
+Leaving this section out sends the pull request back to draft, because we cannot
+tell whether it needs an API discussion first. Fill it in and press "Ready for
+review" to have it checked again.
 -->
 
 - [ ] 🐞 Bug fix
