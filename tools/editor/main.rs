@@ -723,6 +723,7 @@ mod tests {
         let project = tempfile::tempdir().unwrap();
         let path = project.path().join("secondary.slint");
         std::fs::write(&path, "export component Secondary {}").unwrap();
+        let path = std::fs::canonicalize(path).unwrap();
         let component = PreviewComponent {
             url: Url::from_file_path(&path).unwrap(),
             component: Some("Secondary".into()),
