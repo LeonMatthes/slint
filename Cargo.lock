@@ -3665,6 +3665,7 @@ dependencies = [
  "i-slint-live-preview",
  "itertools 0.15.0",
  "lsp-types",
+ "postcard",
  "scopeguard",
  "serde",
  "serde_json",
@@ -3675,6 +3676,8 @@ dependencies = [
  "spin_on",
  "tempfile",
  "tokio",
+ "tokio-tungstenite 0.30.0",
+ "tokio-tungstenite-wasm",
  "tracing",
  "wasm-bindgen-futures",
 ]
